@@ -17,7 +17,8 @@ const say = (m, to, ms) => {
 };
 const fail = (m) => { throw new Error(m, { cause: 1 }); }; // cause marks a message that is shown as it is
 if (!navigator.gpu) fail('This scene needs WebGPU. Try a current Chrome or Edge.');
-const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+// xrCompatible: the same device has to drive a headset later (xr.js); browsers without WebXR ignore it
+const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance', xrCompatible: !!navigator.xr });
 if (!adapter) fail('No WebGPU adapter found.');
 $('w').hidden = !!navigator.userAgentData; // only Chromium-based browsers have it
 const hasTS = adapter.features.has('timestamp-query');
@@ -48,8 +49,9 @@ const tDetail = tex(1024, 1024, 'rgba8unorm', TU.RENDER_ATTACHMENT | TU.TEXTURE_
 const tVol = tex(NX / 2, NY / 2, 'rg8unorm', TU.TEXTURE_BINDING | TU.COPY_DST, { d: NZ / 2 });
 const tMap = tex(512, 512, 'rgba8unorm', TU.TEXTURE_BINDING | TU.COPY_DST);
 
-const UB = new Float32Array(60), UBS = new Float32Array(60);
-const ubo = device.createBuffer({ size: 240, usage: BU.UNIFORM | BU.COPY_DST }), uboS = device.createBuffer({ size: 240, usage: BU.UNIFORM | BU.COPY_DST });
+// UB is struct G in shaders.js; 60-63 (xr) and 64-67 (xo) are only non-zero in VR (xr.js)
+const UB = new Float32Array(68), UBS = new Float32Array(68);
+const ubo = device.createBuffer({ size: 272, usage: BU.UNIFORM | BU.COPY_DST }), uboS = device.createBuffer({ size: 272, usage: BU.UNIFORM | BU.COPY_DST });
 const WT = new Float32Array(4), uboW = device.createBuffer({ size: 16, usage: BU.UNIFORM | BU.COPY_DST });
 
 const VF = SS.VERTEX | SS.FRAGMENT;
@@ -122,7 +124,14 @@ const waterPass = waterViews.map((v) => ({ colorAttachments: [colorAtt(v, true)]
 const mRays = mod(W_RAYS), mPost = mod(W_POST), mRB = mod(W_RBLUR);
 const pRB = device.createRenderPipeline({ layout: 'auto', vertex: { module: mRB, entryPoint: 'vs' }, fragment: { module: mRB, entryPoint: 'fs', targets: [{ format: HDR }] } });
 const pRays = device.createRenderPipeline({ layout: 'auto', vertex: { module: mRays, entryPoint: 'vs' }, fragment: { module: mRays, entryPoint: 'fs', targets: [{ format: HDR }] } });
-const pPost = device.createRenderPipeline({ layout: 'auto', vertex: { module: mPost, entryPoint: 'vs' }, fragment: { module: mPost, entryPoint: 'fs', targets: [{ format: FMT }] } });
+// explicit layout: the VR composite (xr.js) is the same shader into the headset's format and shares the bind group
+const FT = (texture) => ({ visibility: SS.FRAGMENT, texture });
+const plPost = device.createPipelineLayout({ bindGroupLayouts: [device.createBindGroupLayout({ entries: [{ binding: 0, visibility: SS.FRAGMENT, buffer: {} }, { binding: 1, visibility: SS.FRAGMENT, sampler: {} },
+  { binding: 2, ...FT({}) }, { binding: 3, ...FT({}) }, { binding: 4, ...FT({}) }, { binding: 5, ...FT({ sampleType: 'depth', multisampled: AA > 1 }) }] })] });
+// SRGB: the target encodes sRGB itself, so the shader skips its own gamma
+const postPipe = (format) => device.createRenderPipeline({ layout: plPost, vertex: { module: mPost, entryPoint: 'vs' },
+  fragment: { module: mPost, entryPoint: 'fs', targets: [{ format }], constants: { SRGB: format.endsWith('-srgb') ? 1 : 0 } } });
+const pPost = postPipe(FMT), plPostBGL = pPost.getBindGroupLayout(0);
 
 // ---------------------------------------------------------------- sun + shadow matrix
 const SUN = (() => { const v = [0.27, 1, -0.24], l = hypot(...v); return v.map((c) => c / l); })();
@@ -136,7 +145,7 @@ const SUN = (() => { const v = [0.27, 1, -0.24], l = hypot(...v); return v.map((
   m[3] = 0; m[7] = 0; m[11] = 0; m[15] = 1;
   for (let i = 0; i < 16; i++) { UBS[16 + i] = m[i]; UB[16 + i] = m[i]; }
   for (let i = 0; i < 3; i++) { UB[48 + i] = UBS[48 + i] = SUN[i]; }
-  UBS[32] = 0; UBS[33] = -20; UBS[34] = 0; UBS[35] = 0; UBS[58] = 1;
+  UBS[32] = 0; UBS[33] = -20; UBS[34] = 0; UBS[35] = 0; UBS[58] = 1; UB[60] = UB[61] = 0.5;
   Q.writeBuffer(uboS, 0, UBS);
 }
 
@@ -156,10 +165,14 @@ let D;
   const bu = buf(new Uint8Array(u), BU.UNIFORM), bp = buf(prims, BU.STORAGE);
   const bd = device.createBuffer({ size, usage: BU.STORAGE | BU.COPY_SRC }), br = device.createBuffer({ size, usage: BU.MAP_READ | BU.COPY_DST });
   const bg = device.createBindGroup({ layout: p.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: bu } }, { binding: 1, resource: { buffer: bd } }, { binding: 2, resource: { buffer: bp } }] });
-  const e = device.createCommandEncoder(), c = e.beginComputePass();
-  c.setPipeline(p); c.setBindGroup(0, bg); c.dispatchWorkgroups(NX / 4, NY / 4, NZ / 4); c.end();
-  e.copyBufferToBuffer(bd, 0, br, 0, size);
-  Q.submit([e.finish()]);
+  // in slabs of 32 z, each its own submit, so no single GPU job runs long enough to be killed (phones, headsets)
+  for (let z0 = 0; z0 < NZ; z0 += 32) {
+    Q.writeBuffer(bu, 12, new Uint32Array([z0]));
+    const e = device.createCommandEncoder(), c = e.beginComputePass();
+    c.setPipeline(p); c.setBindGroup(0, bg); c.dispatchWorkgroups(NX / 4, NY / 4, 8); c.end();
+    Q.submit([e.finish()]); await Q.onSubmittedWorkDone();
+  }
+  const e = device.createCommandEncoder(); e.copyBufferToBuffer(bd, 0, br, 0, size); Q.submit([e.finish()]);
   await br.mapAsync(GPUMapMode.READ);
   D = new Float32Array(br.getMappedRange().slice(0));
   br.unmap(); br.destroy(); bd.destroy();
@@ -335,13 +348,19 @@ let W = 0, H = 0, DW = 0, DH = 0, pix = +SV[1] || (LV > 1 ? 41e4 : mob ? 1280 * 
 let passScene, passRays, passBlur, bgBlur, passPost, bgRays, bgPost, bloomPass = [], bloomBG = [], targets = [];
 const NB = 6;
 function resize() {
+  if (xs) return; // in VR the headset sets the size (xr.js)
   DW = max(2, round(canvas.clientWidth * devicePixelRatio)); DH = max(2, round(canvas.clientHeight * devicePixelRatio));
   const s = min(1, sqrt(pix / (DW * DH)));
   const w = max(2, round(DW * s) & ~1), h = max(2, round(DH * s) & ~1);
   if (w === W && h === H) return;
   dynN = dynG = dynGN = 0; dynT = -300; // let the new size settle before measuring again
-  W = w; H = h; canvas.width = W; canvas.height = H;
+  canvas.width = w; canvas.height = h;
   ctx.configure({ device, format: FMT, alphaMode: 'opaque' });
+  makeTargets(w, h);
+}
+// the render targets for a w x h view: the window's (resize) or one eye's (xr.js)
+function makeTargets(w, h) {
+  W = w; H = h;
   for (const t of targets) t.destroy();
   const tMS = tex(AA > 1 ? W : 1, H, HDR, TU.RENDER_ATTACHMENT, { samples: AA }), tDp = tex(W, H, DEPTH, TU.RENDER_ATTACHMENT | TU.TEXTURE_BINDING, { samples: AA });
   const tRes = tex(W, H, HDR, TU.RENDER_ATTACHMENT | TU.TEXTURE_BINDING), tRay = tex(W / 2, H / 2, HDR, TU.RENDER_ATTACHMENT | TU.TEXTURE_BINDING), tRay2 = tex(W / 2, H / 2, HDR, TU.RENDER_ATTACHMENT | TU.TEXTURE_BINDING);
@@ -358,7 +377,7 @@ function resize() {
   passPost = { colorAttachments: [{ view: null, loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] };
   bgRays = device.createBindGroup({ layout: pRays.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: ubo } }, { binding: 1, resource: sRep }, { binding: 2, resource: sCmp },
     { binding: 3, resource: tShadow.createView() }, { binding: 4, resource: tWater.createView() }, { binding: 5, resource: vDp }, { binding: 6, resource: tVol.createView() }, { binding: 7, resource: sClamp }] });
-  bgPost = device.createBindGroup({ layout: pPost.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: ubo } }, { binding: 1, resource: sClamp }, { binding: 2, resource: vRes },
+  bgPost = device.createBindGroup({ layout: plPostBGL, entries: [{ binding: 0, resource: { buffer: ubo } }, { binding: 1, resource: sClamp }, { binding: 2, resource: vRes },
     { binding: 3, resource: vRay2 }, { binding: 4, resource: vBl[0] }, { binding: 5, resource: vDp }] });
   bloomPass = []; bloomBG = [];
   // down: res -> b0 -> ... -> b5 ; up: b5 -> b4 (additive) ... -> b0
@@ -366,6 +385,7 @@ function resize() {
   for (let i = NB - 1; i > 0; i--) { bloomPass.push({ colorAttachments: [colorAtt(vBl[i - 1], false)] }); bloomBG.push(blitBG(vBl[i])); }
   UB[52] = W; UB[53] = H; UB[54] = 1 / W; UB[55] = 1 / H;
 }
+let xs = null; // the WebXR session while in VR (xr.js)
 resize();
 addEventListener('resize', resize);
 
@@ -391,6 +411,8 @@ if (hasTS) {
 let hud = false;
 let kf = 0, kb = 0, kl = 0, kr = 0, ku = 0, kd = 0, ks = 0, mdx = 0, mdy = 0, lkx = 0, lky = 0, l2x = 0, l2y = 0, hN = 0, hMax = 0, hMin = 1e9, hPer = 1e9, hLate = 0, hTot = 0, tId = -1, tN = 0, tx0 = 0, ty0 = 0, tx = 0, ty = 0;
 const TANH = 0.6, NEAR = 0.1, EXPO = 0.62, RAYS = 0.54;
+// view culling: tangents of the half field of view, and whether they follow the window (VR sets its own, wider ones)
+let CTX = 0, CTY = TANH;
 const submitList = [null];
 const rowOrd = new Uint8Array(CELLS);
 // Draws the cells of a cell-sorted buffer that are in view and within [minD, maxD) (scaled by `det`, but not for the
@@ -398,7 +420,7 @@ const rowOrd = new Uint8Array(CELLS);
 function drawCells(r, start, lo, hi, mar, indexed, verts, minD, maxD) {
   const cx = F[CX], cy = F[CY], cz = F[CZ], fx = F[FX], fy = F[FY], fz = F[FZ], rx = F[RX], rz = F[RZ], ux = F[UX], uy = F[UY], uz = F[UZ];
   const ds = indexed === 1 ? 1 : det * det;
-  const tx = TANH * W / H, hw = CELLW * 0.5, ex = hw + mar, min2 = minD * minD * ds, max2 = maxD * maxD * ds;
+  const tx = CTX || TANH * W / H, hw = CELLW * 0.5, ex = hw + mar, min2 = minD * minD * ds, max2 = maxD * maxD * ds;
   for (let k = 0; k < CELLS; k++) {
     const rw = rowOrd[k], row = rw * CELLS, pz = OZ + (rw + 0.5) * CELLW - cz, hz = max(abs(pz) - hw, 0);
     let run = -1;
@@ -410,7 +432,7 @@ function drawCells(r, start, lo, hi, mar, indexed, verts, minD, maxD) {
           const px = OX + (x + 0.5) * CELLW - cx, py = (l + h) * 0.5 - cy, ey = (h - l) * 0.5 + mar, hx = max(abs(px) - hw, 0), h2 = hx * hx + hz * hz;
           if (h2 < max2 && h2 >= min2) {
             const lim = px * fx + py * fy + pz * fz + ex * abs(fx) + ey * abs(fy) + ex * abs(fz);
-            if (lim >= 0 && abs(px * rx + pz * rz) - ex * (abs(rx) + abs(rz)) <= lim * tx) v = abs(px * ux + py * uy + pz * uz) - ex * (abs(ux) + abs(uz)) - ey * abs(uy) <= lim * TANH;
+            if (lim >= 0 && abs(px * rx + pz * rz) - ex * (abs(rx) + abs(rz)) <= lim * tx) v = abs(px * ux + py * uy + pz * uz) - ex * (abs(ux) + abs(uz)) - ey * abs(uy) <= lim * CTY;
           }
         }
       }
@@ -422,37 +444,59 @@ function drawCells(r, start, lo, hi, mar, indexed, verts, minD, maxD) {
     }
   }
 }
-function render() {
-  // camera basis (right vector is horizontal)
-  const cx = F[CX], cy = F[CY], cz = F[CZ], pitch = F[PIT], yaw = F[YAW];
-  const cp = cos(pitch), fy = sin(pitch), rx = cos(yaw), rz = sin(yaw), fx = cp * rz, fz = -cp * rx;
-  const ux = -rz * fy, uy = rz * fx - rx * fz, uz = rx * fy;
-  F[FX] = fx; F[FY] = fy; F[FZ] = fz; F[RX] = rx; F[RZ] = rz; F[UX] = ux; F[UY] = uy; F[UZ] = uz;
-  const asp = W / H, sx = 1 / (TANH * asp), sy = 1 / TANH, m = UB;
-  m[0] = rx * sx; m[4] = 0; m[8] = rz * sx; m[12] = -(rx * cx + rz * cz) * sx;
-  m[1] = ux * sy; m[5] = uy * sy; m[9] = uz * sy; m[13] = -(ux * cx + uy * cy + uz * cz) * sy;
+// the culling basis from yaw and pitch (the right vector is horizontal)
+function basis(yaw, pitch) {
+  const cp = cos(pitch), rx = cos(yaw), rz = sin(yaw), fy = sin(pitch), fx = cp * rz, fz = -cp * rx;
+  F[FX] = fx; F[FY] = fy; F[FZ] = fz; F[RX] = rx; F[RZ] = rz; F[UX] = -rz * fy; F[UY] = rz * fx - rx * fz; F[UZ] = rx * fy;
+}
+// Fills the camera part of UB: eye at c, orthonormal right / up / forward vectors, and the projection
+// x_ndc = a * x / depth - ox, y_ndc = b * y / depth - oy (ox = oy = 0 for a centred view, as on the desktop; a VR eye
+// is off-centre). Depth is reversed and infinite: z_ndc = NEAR / depth. The shaders rebuild view rays as
+// fwd + right * (x_ndc * right.w) + up * (y_ndc * up.w), so `fwd` takes the off-centre shift.
+function setCam(cx, cy, cz, rx, ry, rz, ux, uy, uz, fx, fy, fz, a, b, ox, oy) {
+  const m = UB;
+  m[0] = a * rx - ox * fx; m[4] = a * ry - ox * fy; m[8] = a * rz - ox * fz; m[12] = -(m[0] * cx + m[4] * cy + m[8] * cz);
+  m[1] = b * ux - oy * fx; m[5] = b * uy - oy * fy; m[9] = b * uz - oy * fz; m[13] = -(m[1] * cx + m[5] * cy + m[9] * cz);
   m[2] = 0; m[6] = 0; m[10] = 0; m[14] = NEAR;
   m[3] = fx; m[7] = fy; m[11] = fz; m[15] = -(fx * cx + fy * cy + fz * cz);
   m[32] = cx; m[33] = cy; m[34] = cz; m[35] = F[TIME];
-  m[36] = rx; m[37] = 0; m[38] = rz; m[39] = TANH * asp;
-  m[40] = ux; m[41] = uy; m[42] = uz; m[43] = TANH;
-  m[44] = fx; m[45] = fy; m[46] = fz; m[47] = NEAR;
+  m[36] = rx; m[37] = ry; m[38] = rz; m[39] = 1 / a;
+  m[40] = ux; m[41] = uy; m[42] = uz; m[43] = 1 / b;
+  m[44] = fx + (rx * ox) / a + (ux * oy) / b; m[45] = fy + (ry * ox) / a + (uy * oy) / b; m[46] = fz + (rz * ox) / a + (uz * oy) / b; m[47] = NEAR;
   const zx = cx - PURPLE[0], zz = cz - PURPLE[1]; let zt = (44 - sqrt(zx * zx + zz * zz)) / 18; zt = zt < 0 ? 0 : zt > 1 ? 1 : zt;
   m[51] = zt * zt * (3 - 2 * zt);
   let ek = (-cy - 8) / 26; ek = ek < 0 ? 0 : ek > 1 ? 1 : ek;
   m[56] = EXPO * (0.6 + 0.4 * ek); m[57] = RAYS; m[58] = det;
+}
+function render() {
+  basis(F[YAW], F[PIT]);
+  setCam(F[CX], F[CY], F[CZ], F[RX], 0, F[RZ], F[UX], F[UY], F[UZ], F[FX], F[FY], F[FZ], 1 / (TANH * W / H), 1 / TANH, 0, 0);
   Q.writeBuffer(ubo, 0, UB);
-  WT[0] = F[TIME]; Q.writeBuffer(uboW, 0, WT);
-
-  { let cr = floor((cz - OZ) / CELLW) | 0; cr = cr < 0 ? 0 : cr > CELLS - 1 ? CELLS - 1 : cr; let n = 0; rowOrd[n++] = cr; for (let d = 1; d < CELLS; d++) { if (cr - d >= 0) rowOrd[n++] = cr - d; if (cr + d < CELLS) rowOrd[n++] = cr + d; } }
   const e = device.createCommandEncoder();
-  let slot = null;
-  if (hasTS) { for (let i = 0; i < qRead.length; i++) if (!qRead[i].busy) { slot = qRead[i]; break; } }
-  waterPass[0].timestampWrites = slot ? tsBegin : undefined;
-  passPost.timestampWrites = slot ? tsEnd : undefined;
-  // animated water texture + mips
-  let r = e.beginRenderPass(waterPass[0]); r.setPipeline(pWater); r.setBindGroup(0, bgWater); r.draw(3); r.end();
-  for (let i = 1; i < 5; i++) { r = e.beginRenderPass(waterPass[i]); r.setPipeline(pMip16); r.setBindGroup(0, waterBG[i - 1]); r.draw(3); r.end(); }
+  passPost.colorAttachments[0].view = ctx.getCurrentTexture().createView();
+  draw(e, true, true, pPost, passPost, null, true);
+  submitList[0] = e.finish();
+  Q.submit(submitList);
+}
+// Records one view's passes into e: the scene from the camera in UB (already written), composited by `post` into
+// `outPass` (inside viewport vp, or all of it). first: the frame's first view, which also animates the water texture;
+// last: its last view, which reads back the GPU time measured since the first. bloom: false skips the bloom chain.
+let tsSlot = null;
+function draw(e, first, last, post, outPass, vp, bloom) {
+  if (first) {
+    WT[0] = F[TIME]; Q.writeBuffer(uboW, 0, WT);
+    tsSlot = null;
+    if (hasTS) { for (let i = 0; i < qRead.length; i++) if (!qRead[i].busy) { tsSlot = qRead[i]; break; } }
+  }
+  const slot = tsSlot;
+  { let cr = floor((F[CZ] - OZ) / CELLW) | 0; cr = cr < 0 ? 0 : cr > CELLS - 1 ? CELLS - 1 : cr; let n = 0; rowOrd[n++] = cr; for (let d = 1; d < CELLS; d++) { if (cr - d >= 0) rowOrd[n++] = cr - d; if (cr + d < CELLS) rowOrd[n++] = cr + d; } }
+  let r;
+  if (first) {
+    // animated water texture + mips
+    waterPass[0].timestampWrites = slot ? tsBegin : undefined;
+    r = e.beginRenderPass(waterPass[0]); r.setPipeline(pWater); r.setBindGroup(0, bgWater); r.draw(3); r.end();
+    for (let i = 1; i < 5; i++) { r = e.beginRenderPass(waterPass[i]); r.setPipeline(pMip16); r.setBindGroup(0, waterBG[i - 1]); r.draw(3); r.end(); }
+  }
   // scene
   r = e.beginRenderPass(passScene);
   r.setBindGroup(0, bg0);
@@ -487,16 +531,18 @@ function render() {
   r = e.beginRenderPass(passRays); r.setPipeline(pRays); r.setBindGroup(0, bgRays); r.draw(3); r.end();
   r = e.beginRenderPass(passBlur); r.setPipeline(pRB); r.setBindGroup(0, bgBlur); r.draw(3); r.end();
   // bloom
-  for (let i = 0; i < bloomPass.length; i++) {
+  if (bloom) for (let i = 0; i < bloomPass.length; i++) {
     r = e.beginRenderPass(bloomPass[i]); r.setPipeline(i === 0 ? pDown0 : i < NB ? pDown : pUp); r.setBindGroup(0, bloomBG[i]); r.draw(3); r.end();
   }
   // composite
-  passPost.colorAttachments[0].view = ctx.getCurrentTexture().createView();
-  r = e.beginRenderPass(passPost); r.setPipeline(pPost); r.setBindGroup(0, bgPost); r.draw(3); r.end();
-  if (slot) { e.resolveQuerySet(qs, 0, 2, qResolve, 0); e.copyBufferToBuffer(qResolve, 0, slot.b, 0, 16); }
-  submitList[0] = e.finish();
-  Q.submit(submitList);
-  if (slot) { slot.busy = true; slot.b.mapAsync(GPUMapMode.READ).then(slot.done); }
+  outPass.timestampWrites = slot && last ? tsEnd : undefined;
+  r = e.beginRenderPass(outPass); r.setPipeline(post); r.setBindGroup(0, bgPost);
+  if (vp) r.setViewport(vp.x, vp.y, vp.width, vp.height, 0, 1);
+  r.draw(3); r.end();
+  if (slot && last) {
+    e.resolveQuerySet(qs, 0, 2, qResolve, 0); e.copyBufferToBuffer(qResolve, 0, slot.b, 0, 16);
+    slot.busy = true; queueMicrotask(() => slot.b.mapAsync(GPUMapMode.READ).then(slot.done)); // mapped after the submit
+  }
 }
 
 // CS[j] = distance to the rock (metres, < 0 in water) at the camera + CE[3j..3j+2]: the camera, then ±0.375 m on
@@ -530,6 +576,7 @@ function collide() {
 
 function frame(now) {
   requestAnimationFrame(frame);
+  if (xs) { F[LAST] = now; return; } // in VR the headset drives the frames (xr.js)
   const dtr = now - F[LAST]; F[LAST] = now;
   let dt = dtr / 1000; if (dt > 0.1) dt = 0.1;
   // Dynamic resolution for 60 fps: every second (0.4 s behind the menu) scale the load by k

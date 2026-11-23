@@ -81,7 +81,9 @@ fn dens(p: vec3f) -> f32 {
   }
   return min(d, 3. - p.y);
 }
-@compute @workgroup_size(4, 4, 4) fn main(@builtin(global_invocation_id) id: vec3u) {
+// dispatched in slabs along z (u.n.w = first z of the slab): one long dispatch can trip a mobile GPU's watchdog
+@compute @workgroup_size(4, 4, 4) fn main(@builtin(global_invocation_id) gid: vec3u) {
+  let id = gid + vec3u(0u, 0u, u.n.w);
   if (any(id >= u.n.xyz)) { return; }
   var d = dens(u.o.xyz + vec3f(id) * u.o.w);
   if (id.x == 0u || id.z == 0u || id.x == u.n.x - 1u || id.z == u.n.z - 1u || id.y == u.n.y - 1u) { d = -1.; }
@@ -190,7 +192,9 @@ const WK = array<vec3f, 10>(vec3f(1., 2., 1.), vec3f(-2., 1., .9), vec3f(3., 1.,
 
 // ---------------------------------------------------------------- shared scene code
 const S_G = /*wgsl*/`
-struct G { vp: mat4x4f, sm: mat4x4f, cam: vec4f, right: vec4f, up: vec4f, fwd: vec4f, sun: vec4f, res: vec4f, mis: vec4f };
+// xr: lens centre in the view (uv) and comfort vignette strength; xo: the view's viewport origin in its target.
+// Both only matter in VR (xr.js); on the desktop they are (.5, .5, 0) and 0.
+struct G { vp: mat4x4f, sm: mat4x4f, cam: vec4f, right: vec4f, up: vec4f, fwd: vec4f, sun: vec4f, res: vec4f, mis: vec4f, xr: vec4f, xo: vec4f };
 const SIG = vec3f(.058, .0235, .0195);
 const KD = vec3f(.056, .0245, .0170);
 const WCOL = vec3f(.16, .58, .90);
@@ -748,12 +752,14 @@ const W_POST = S_G + W_FS + /*wgsl*/`
 @group(0) @binding(5) var tDp: texture_depth${AA > 1 ? '_multisampled' : ''}_2d;
 fn tmap(x: vec3f) -> vec3f { return sat3((x * (2.51 * x + .03)) / (x * (2.43 * x + .59) + .14)); }
 fn sat3(x: vec3f) -> vec3f { return clamp(x, vec3f(0.), vec3f(1.)); }
-@fragment fn fs(@builtin(position) fc: vec4f) -> @location(0) vec4f {
-  let px = vec2i(fc.xy);
-  let uv = fc.xy * g.res.zw;
+override SRGB = 0.;
+@fragment fn fs(@builtin(position) fp: vec4f) -> @location(0) vec4f {
+  let fc = fp.xy - g.xo.xy;
+  let px = vec2i(fc);
+  let uv = fc * g.res.zw;
   let zf = g.fwd.w / max(textureLoad(tDp, px, 0), 1e-6);
   // depth-aware upsample of the half-res shafts
-  let h = fc.xy * .5 - .5; let b = floor(h); let f = h - b; let bi = vec2i(b);
+  let h = fc * .5 - .5; let b = floor(h); let f = h - b; let bi = vec2i(b);
   let mx = vec2i(textureDimensions(tR)) - 1;
   var acc = vec3f(0.); var ws = 0.;
   for (var k = 0; k < 4; k++) {
@@ -767,16 +773,17 @@ fn sat3(x: vec3f) -> vec3f { return clamp(x, vec3f(0.), vec3f(1.)); }
   let bl = textureSampleLevel(tB, sC, uv, 0.).rgb;
   c = mix(c, bl, .06) + bl * .03;
   c *= g.mis.x;
-  let q = uv - .5;
+  let q = uv - g.xr.xy;
   c *= 1. - dot(q, q) * .55;
+  c *= 1. - g.xr.z * ss(.1, .36, length(q)); // comfort vignette while moving in VR
   c = tmap(c);
   let l0 = dot(c, vec3f(.2126, .7152, .0722));
   let l = mix(l0, l0 * l0 * (3. - 2. * l0), .55);
   c *= l / max(l0, 1e-4);
   c = mix(c, vec3f(l), ss(.55, 1., l) * .1);
   c = mix(vec3f(l), c, .93) + vec3f(.008, .002, 0.);
-  c = pow(max(c, vec3f(0.)), vec3f(1. / 2.2));
-  let n = ign(fc.xy) + ign(fc.xy + 37.) - 1.;
+  if (SRGB < .5) { c = pow(max(c, vec3f(0.)), vec3f(1. / 2.2)); }
+  let n = ign(fc) + ign(fc + 37.) - 1.;
   return vec4f(c + n / 255., 1.);
 }
 `;

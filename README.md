@@ -49,6 +49,26 @@ The seabed, cliffs and arches are solid: you glide along the rock instead of swi
 
 **On a touchscreen:** hold one finger down to swim forward and slide it to steer. Put a second finger down to go faster. The `≡` button in the corner opens the menu. Phones always show the scene in landscape and start on Low or Medium detail. (Touch support is experimental.)
 
+## Virtual reality (experimental)
+
+On a headset whose browser supports **WebGPU in WebXR** (Meta Quest Browser, where it is new and still partly
+experimental), the menu shows **Enter VR**. The page has to be opened over `https://` (or `localhost`): browsers only
+allow VR on secure pages, so opening the file straight from disk will not show the button.
+
+| | Controllers | Hands |
+|---|---|---|
+| Swim where you look | Left stick | |
+| Swim where you point | Hold the trigger | Pinch and hold |
+| Rise / sink | Right stick up / down | |
+| Turn | Right stick left / right (snap 30° or smooth) | Turn your body |
+| Swim faster | Hold grip | |
+| Next viewpoint | A / X | |
+
+**Snap turn / Smooth turn** and **Vignette** (darkens the edges while you move or turn) are set in the menu before
+entering VR. On a Quest the page starts on **Low** detail; VR also renders at a lower resolution (`?xrscale=`),
+skips bloom (`?xrbloom=1` brings it back) and adapts the draw distance (`?xrdet=` sets where it starts).
+Not yet tested on a real headset: see [`source/src/xr.js`](source/src/xr.js) for how it works.
+
 ## Detail levels
 
 The **Low**, **Medium** and **High** buttons in the menu pick the detail level; the current one is lit. Each level is the same world, built with less in it:
@@ -91,6 +111,7 @@ This writes a new `index.html` next to this README. `npm run build:readable` wri
 | [`source/src/audio.js`](source/src/audio.js) | The soundscape |
 | [`source/src/quality.js`](source/src/quality.js) | The detail levels: which one a device starts on, and what is remembered between visits |
 | [`source/src/math.js`](source/src/math.js) | Noise, random numbers and mesh-building helpers |
+| [`source/src/xr.js`](source/src/xr.js) | Virtual reality: Enter VR, drawing both eyes, swimming with controllers or hands, comfort options |
 | [`source/src/dev.js`](source/src/dev.js) | Development tools (fly-through and benchmark), only in `dev.html` |
 | [`source/template.html`](source/template.html) | The page around the scene: loading bar, start menu, links and their styles |
 
