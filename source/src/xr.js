@@ -7,7 +7,8 @@
 // Moving around moves a "rig" (the play space) through the world. The head moves freely inside it; collide() keeps
 // the head out of the rock and the rig follows, so leaning into a wall pushes you back out.
 //
-// Controllers:  left stick swim (in the direction you look)  ·  right stick left/right turn, up/down rise/sink
+// Controllers (defaults; the player can change them in the menu's VR controls):
+//               left stick swim (in the direction you look)  ·  other stick left/right turn, up/down rise/sink
 //               grip  swim faster  ·  trigger  swim where the controller points  ·  A / X  next viewpoint
 // Hands:        pinch and hold to swim where the hand points
 //
@@ -22,9 +23,35 @@
   const XSCALE = +URLQ.get('xrscale') || [0.9, 0.75, 0.7][LV]; // Low 0.7: tested smooth on a Quest 3
   const XDET = +URLQ.get('xrdet') || [1, 0.8, 0.6][LV];
   const XBLOOM = URLQ.get('xrbloom') === '1';
-  // comfort options, kept between visits
-  let opt = { snap: true, vig: true };
+  // comfort options and controller mapping, kept between visits. Buttons are xr-standard gamepad indices
+  // (0 trigger, 1 grip, 3 stick press, 4 A / X, 5 B / Y); -1 is off. move: the hand whose stick swims.
+  const VDEF = { move: 'left', point: 0, fast: 1, next: 4 };
+  let opt = { snap: true, vig: true, ...VDEF };
   try { opt = { ...opt, ...JSON.parse(localStorage.abyssalVR || '{}') }; } catch {}
+  const BTN = { 0: 'Trigger', 1: 'Grip', 3: 'Stick press', 4: 'A / X', 5: 'B / Y', '-1': 'Off' };
+  const CHOICES = { point: [0, 1, -1], fast: [1, 0, 3, 5, 4, -1], next: [4, 5, 3, -1] };
+  const vB = $('r').querySelectorAll('[data-v]');
+  const showMap = () => {
+    for (const b of vB) {
+      const a = b.dataset.v;
+      b.textContent = a === 'move' ? (opt.move === 'left' ? 'Left stick' : 'Right stick') : a === 'turn' ? (opt.move === 'left' ? 'Right stick' : 'Left stick') : BTN[opt[a]];
+    }
+    keep('abyssalVR', JSON.stringify(opt));
+  };
+  // each click steps to the next choice, skipping buttons another action already uses
+  for (const b of vB) if (b.tagName === 'BUTTON') b.onclick = () => {
+    const a = b.dataset.v;
+    if (a === 'move') opt.move = opt.move === 'left' ? 'right' : 'left';
+    else {
+      const c = CHOICES[a], used = ['point', 'fast', 'next'].filter((o) => o !== a).map((o) => opt[o]);
+      let i = c.indexOf(opt[a]);
+      do i = (i + 1) % c.length; while (c[i] >= 0 && used.includes(c[i]));
+      opt[a] = c[i];
+    }
+    showMap();
+  };
+  $('vx').onclick = () => { Object.assign(opt, VDEF); showMap(); };
+  showMap();
   const optB = bOpt.querySelectorAll('button');
   const showOpt = () => {
     optB[0].textContent = opt.snap ? 'Snap turn' : 'Smooth turn'; optB[0].className = 'on';
@@ -37,11 +64,12 @@
 
   // offer VR only where the browser says it can do immersive VR at all; whether it can do it with WebGPU only shows
   // when the session is requested
-  navigator.xr?.isSessionSupported('immersive-vr').then((ok) => { if (ok) { bVR.hidden = bOpt.hidden = false; showOpt(); } }).catch(() => 0);
+  // (the VR controls list stays visible on large screens either way; with VR it shows on any screen)
+  navigator.xr?.isSessionSupported('immersive-vr').then((ok) => { if (ok) { bVR.hidden = bOpt.hidden = false; $('r').classList.add('vr'); showOpt(); } }).catch(() => 0);
 
   let xb, layer, xref, pPostXR, passXR, deskDet = det, place = true;
   const rig = new Float64Array(4); // play-space origin in the world (x, y, z) and its turn about the vertical (w)
-  const held = new Set(); // input sources with the trigger / pinch held
+  const held = new Set(); // input sources with select held: a hand's pinch
   // rotate (x, y, z) by the rig's turn: the result is in R[0..2]
   const R = new Float64Array(3);
   const rot = (x, y, z) => { const c = cos(rig[3]), s = sin(rig[3]); R[0] = x * c - z * s; R[1] = y; R[2] = x * s + z * c; };
@@ -96,15 +124,17 @@
     let mx = 0, my = 0, tx = 0, ty = 0, fast = 0, px = 0, py = 0, pz = 0, btn = false;
     for (const src of s.inputSources) {
       const gp = src.gamepad;
-      if (gp && gp.axes.length >= 4) {
-        const ax = dz(gp.axes[2]), ay = dz(gp.axes[3]);
-        if (src.handedness === 'right') { tx = ax; ty = ay; } else { mx = ax; my = ay; }
-        if (gp.buttons[1]?.pressed) fast = 1;
-        if (gp.buttons[4]?.pressed) btn = true;
-      }
-      if (held.has(src)) { const p = xf.getPose(src.targetRaySpace, xref); if (p) { const m = p.transform.matrix; px -= m[8]; py -= m[9]; pz -= m[10]; } }
+      let point = false;
+      if (gp && gp.axes.length >= 4) { // a controller: its buttons as mapped in the menu
+        const ax = dz(gp.axes[2]), ay = dz(gp.axes[3]), b = gp.buttons;
+        if (src.handedness === opt.move) { mx = ax; my = ay; } else { tx = ax; ty = ay; }
+        if (b[opt.fast]?.pressed) fast = 1;
+        if (b[opt.next]?.pressed) btn = true;
+        point = !!b[opt.point]?.pressed;
+      } else point = held.has(src); // a hand: pinch
+      if (point) { const p = xf.getPose(src.targetRaySpace, xref); if (p) { const m = p.transform.matrix; px -= m[8]; py -= m[9]; pz -= m[10]; } }
     }
-    // A / X: the next of the six viewpoints
+    // the next of the six viewpoints (A / X unless remapped)
     if (btn && !btnHeld) { pose6 = (pose6 + 1) % POSES.length; lookAt(...POSES[pose6]); place = true; }
     btnHeld = btn;
     if (place) return; // re-placed next frame
