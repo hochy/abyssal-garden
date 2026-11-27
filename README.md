@@ -32,6 +32,18 @@ not allow VR on a file opened straight from disk.
 | Swim faster | Hold grip | |
 | Next viewpoint | A / X | |
 
+These are the defaults, and the start menu lists them next to the keyboard keys. **To change them, click a control in
+the VR controls list** (on the computer, or with the controller's laser on the Quest before you enter VR):
+
+- **Swim where you look** switches between the left and right stick. The other stick then turns and rises / sinks, so
+  left-handed players can swim with the right hand.
+- **Swim where you point** can be the trigger, the grip, or off.
+- **Swim faster** can be the grip, the trigger, a stick press, B / Y, A / X, or off.
+- **Next viewpoint** can be A / X, B / Y, a stick press, or off.
+
+Each click moves to the next choice and skips buttons already used by another action. **Reset VR controls** puts the
+defaults back. The choices are saved in the browser and kept between visits.
+
 ### Comfort
 
 Set in the menu before you press **Enter VR**; the page remembers them.
@@ -116,6 +128,10 @@ Nothing to install, and the downloaded file works offline. It needs a browser wi
 | Sound on / off | `M` (sound starts when you dive in) |
 | Performance stats | `H` |
 | Detail level | **Low**, **Medium** or **High** in the menu (reloads the page) |
+
+**To change a key, click it in the menu's list of controls, then press the new key.** If that key already does
+something else, the two swap. `Esc` and `1` to `6` stay fixed. **Reset keys** puts the defaults back, and your keys are
+saved in the browser between visits. The menu always shows the keys you are using.
 
 The seabed, cliffs and arches are solid: you glide along the rock instead of swimming into it, and you still fit through every tunnel and arch. Kelp, plants, corals, sponges, loose rocks, the floating boulders, the ship and the whale tail you can swim through.
 

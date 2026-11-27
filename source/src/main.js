@@ -627,20 +627,44 @@ function frame(now) {
 }
 
 // ---------------------------------------------------------------- input
+// Keys by action. The player can change them in the menu (click a key cap, press the new key); kept between visits.
+// Esc (menu) and 1-6 (viewpoints) are fixed.
+const KDEF = { fwd: 'KeyW', left: 'KeyA', back: 'KeyS', right: 'KeyD', down: 'KeyQ', up: 'KeyE', fast: 'ShiftLeft', mute: 'KeyM', stats: 'KeyH' };
+let KEYS = { ...KDEF };
+try { Object.assign(KEYS, JSON.parse(localStorage.abyssalKeys || '{}')); } catch {}
+const isKey = (c, a) => c === KEYS[a] || (KEYS[a] === 'ShiftLeft' && c === 'ShiftRight'); // either Shift counts
 const key = (e, v) => {
-  switch (e.code) {
-    case 'KeyW': kf = v; break; case 'KeyS': kb = v; break; case 'KeyA': kl = v; break; case 'KeyD': kr = v; break;
-    case 'KeyE': ku = v; break; case 'KeyQ': kd = v; break; case 'ShiftLeft': case 'ShiftRight': ks = v; break;
-    default: if (v && !e.repeat) {
-      if (e.code === 'KeyH') { hud = !hud; hTot = 0; hPer = 1e9; info.textContent = ''; }
-      else if (e.code === 'KeyM') mute();
-      else if (e.code === 'Escape') ui(true);
-      else if (e.code >= 'Digit1' && e.code <= 'Digit6') lookAt(...POSES[e.code.charCodeAt(5) - 49]);
-    }
+  const c = e.code;
+  if (isKey(c, 'fwd')) kf = v; else if (isKey(c, 'back')) kb = v; else if (isKey(c, 'left')) kl = v; else if (isKey(c, 'right')) kr = v;
+  else if (isKey(c, 'up')) ku = v; else if (isKey(c, 'down')) kd = v; else if (isKey(c, 'fast')) ks = v;
+  else if (v && !e.repeat) {
+    if (isKey(c, 'stats')) { hud = !hud; hTot = 0; hPer = 1e9; info.textContent = ''; }
+    else if (isKey(c, 'mute')) mute();
+    else if (c === 'Escape') ui(true);
+    else if (c >= 'Digit1' && c <= 'Digit6' && c.length === 6) lookAt(...POSES[c.charCodeAt(5) - 49]);
   }
 };
+// key caps in the menu: show the current keys; a click waits for the next key press and assigns it (Esc cancels).
+// A key already used by another action swaps with it.
+const keyName = (c) => ({ ShiftLeft: 'Shift', ShiftRight: 'Shift', ControlLeft: 'Ctrl', ControlRight: 'Ctrl', AltLeft: 'Alt', AltRight: 'Alt',
+  Space: 'Space', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Tab: 'Tab', Enter: 'Enter' })[c] || c.replace(/^(Key|Digit|Numpad)/, '');
+let waitKey = null;
+const showKeys = () => { for (const b of $('k').querySelectorAll('b[data-k]')) { b.textContent = keyName(KEYS[b.dataset.k]); b.className = b === waitKey ? 'w' : ''; } };
+$('k').querySelectorAll('b[data-k]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); waitKey = waitKey === b ? null : b; showKeys(); });
+$('kx').onclick = () => { KEYS = { ...KDEF }; keep('abyssalKeys', '{}'); waitKey = null; showKeys(); };
+addEventListener('keydown', (e) => {
+  if (!waitKey) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const c = e.code, a = waitKey.dataset.k; waitKey = null;
+  if (c !== 'Escape' && !/^Digit[1-6]$/.test(c)) {
+    for (const o in KEYS) if (o !== a && (KEYS[o] === c || (c === 'ShiftRight' && KEYS[o] === 'ShiftLeft'))) KEYS[o] = KEYS[a];
+    KEYS[a] = c; keep('abyssalKeys', JSON.stringify(KEYS));
+  }
+  showKeys();
+}, true);
+showKeys();
 // behind the menu only the stats and mute keys work
-addEventListener('keydown', (e) => { if (menu && e.code !== 'KeyH' && e.code !== 'KeyM') return; sound(); key(e, 1); });
+addEventListener('keydown', (e) => { if (menu && !isKey(e.code, 'stats') && !isKey(e.code, 'mute')) return; sound(); key(e, 1); });
 addEventListener('keyup', (e) => key(e, 0));
 const release = () => { kf = kb = kl = kr = ku = kd = ks = 0; tId = -1; tN = 0; };
 const capture = () => { sound(); const p = canvas.requestPointerLock({ unadjustedMovement: true }); if (p && p.catch) p.catch(() => canvas.requestPointerLock()).catch(() => 0); };

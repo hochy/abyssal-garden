@@ -30,11 +30,11 @@ body:not(.g) canvas { filter: blur(1vmax) brightness(.5); transform: scale(1.06)
 
 /* menu: the loading bar and the buttons share one grid cell, so nothing jumps when they swap */
 #m {
-  position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: min(2.2em, 6vmin);
-  padding: 1em 1em 4.5em; text-align: center; background: radial-gradient(#03131c00 30%, #03131ccc);
+  position: absolute; inset: 0; display: grid; place-content: safe center; justify-items: center; gap: min(2.2em, 6vmin); overflow-y: auto;
+  padding: 1em; text-align: center; background: radial-gradient(#03131c00 30%, #03131ccc);
   transition: opacity .5s, visibility .5s;
 }
-.g #m, .m #l, .l #g { opacity: 0; visibility: hidden; }
+.g #m, .m #l, .l #g, .l #c { opacity: 0; visibility: hidden; }
 h1 {
   margin: 0; font: 900 4.4em/1 system-ui, sans-serif; letter-spacing: .05em; text-transform: uppercase;
   color: #0000; background: linear-gradient(#fff 25%, #7ff3ff 60%, #14a9c4);
@@ -43,7 +43,7 @@ h1 {
 p { margin: 0; }
 #a { display: grid; width: 27em; max-width: 100%; }
 #a > * { grid-area: 1/1; transition: opacity .8s, visibility .8s; }
-#s, #w, #q, #k, #h, #x { font-size: .8em; letter-spacing: .12em; text-transform: uppercase; }
+#s, #w, #q, #k, #h, #x, #r { font-size: .8em; letter-spacing: .12em; text-transform: uppercase; }
 #w { margin-top: 1.2em; color: #7ff3ff; text-wrap: balance; }
 
 /* loading bar */
@@ -75,12 +75,12 @@ button:active, a:active { transform: translateY(.1em); filter: brightness(.9); }
 }
 
 /* GitHub and Ko-fi: always at the bottom of the menu, in their own colours */
-#f { position: absolute; left: 0; right: 0; bottom: 1.5em; display: flex; justify-content: center; gap: 1em; font-size: .8em; }
+#f { display: flex; justify-content: center; gap: 1em; font-size: .8em; }
 a + a { background: #ff5e5b; color: #fff; }
 svg { width: 1.5em; height: 1.5em; fill: currentColor; }
 
 /* dark plates under the dive button: detail level, list of controls, touch hint */
-#q, #k, #h, #x, #y { padding: 1em 1.6em; border-radius: .7em; background: #03131cb3; }
+#q, #k, #h, #x, #y, #r { padding: 1em 1.6em; border-radius: .7em; background: #03131cb3; }
 
 /* detail level: three buttons in a row, the current one lit */
 #q { display: flex; align-items: center; gap: .4em; padding: .4em; }
@@ -99,7 +99,24 @@ svg { width: 1.5em; height: 1.5em; fill: currentColor; }
 #q .on { background: linear-gradient(#9ff6ff, #19c3d6); box-shadow: inset 0 -.2em #0003; color: #03222d; pointer-events: none; }
 
 /* list of controls: two groups, key caps right-aligned against their labels */
-#k { display: flex; justify-content: center; gap: 2em; text-align: left; }
+#k { display: grid; grid-template-columns: auto auto; justify-content: center; align-content: center; gap: 1.2em 2em; text-align: left; }
+#kh { grid-column: 1 / -1; display: flex; justify-content: center; align-items: center; gap: 1em; font-size: .85em; color: #7ff3ffb0; }
+#c { display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; gap: 1em; max-width: 100%; transition: opacity .8s, visibility .8s; }
+/* key caps and VR bindings are buttons: small, flat, lit while waiting for a new key */
+#k b[data-k], #r button[data-v] { cursor: pointer; }
+#k b[data-k]:hover, #r button[data-v]:hover { filter: brightness(1.2); outline: 2px solid #7ff3ff; }
+#k b.w { background: #ffd27f; animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: .5; } }
+.lk { padding: .3em .6em; background: none; box-shadow: inset 0 0 0 2px #7ff3ff60; color: #7ff3ff; font-size: .85em; }
+#r { display: grid; gap: .7em; text-align: left; }
+#r[hidden] { display: none; }
+#r .rt { text-align: center; color: #7ff3ff; }
+#r .rt span { color: #7ff3ffb0; text-transform: none; letter-spacing: 0; }
+#r .rg { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .5em .9em; }
+#r .rg button, #r .rg b { justify-self: end; padding: .25em .6em; border-radius: .35em; background: #e8fbff; box-shadow: inset 0 -.15em #0004;
+  color: #03222d; font: inherit; letter-spacing: inherit; white-space: nowrap; }
+#r .rg b { background: #e8fbff99; }
+#r .rg .lk { justify-self: center; grid-column: 1 / 3; background: none; color: #7ff3ff; box-shadow: inset 0 0 0 2px #7ff3ff60; }
 #k p { display: grid; grid-template-columns: auto auto; align-content: start; align-items: center; gap: .55em .9em; }
 #k p + p { padding-left: 2em; border-left: 2px solid #7ff3ff40; }
 #k i { display: flex; justify-self: end; align-items: center; gap: .25em; font-style: normal; }
@@ -110,6 +127,7 @@ svg { width: 1.5em; height: 1.5em; fill: currentColor; }
 #h { display: none; }
 @media (pointer: coarse), (max-height: 30em) {
   #k { display: none; }
+  #r:not(.vr) { display: none; }
 }
 @media (pointer: coarse) {
   #h { display: block; }
@@ -139,21 +157,38 @@ svg { width: 1.5em; height: 1.5em; fill: currentColor; }
       <p id=x hidden><span>VR</span><button>Snap turn</button><button>Vignette</button></p>
       <p id=y hidden></p>
       <p id=q><span>Detail</span><button>Low</button><button>Medium</button><button>High</button></p>
-      <div id=k>
-        <p>
-          <i><b>W</b><b>A</b><b>S</b><b>D</b></i>Swim
-          <i><b>Q</b><b>E</b></i>Down / up
-          <i><b>Shift</b></i>Faster
-          <i><b>1</b>–<b>6</b></i>Viewpoints
-        </p>
-        <p>
-          <i><b>Esc</b></i>Menu
-          <i><b>M</b></i>Mute
-          <i><b>H</b></i>Stats
-        </p>
-      </div>
       <p id=h>Hold to swim forward · slide to steer · second finger to go faster</p>
     </div>
+  </div>
+  <div id=c>
+  <div id=k>
+    <p>
+      <i><b data-k=fwd>W</b><b data-k=left>A</b><b data-k=back>S</b><b data-k=right>D</b></i>Swim
+      <i><b data-k=down>Q</b><b data-k=up>E</b></i>Down / up
+      <i><b data-k=fast>Shift</b></i>Faster
+      <i><b>1</b>–<b>6</b></i>Viewpoints
+    </p>
+    <p>
+      <i><b>Esc</b></i>Menu
+      <i><b data-k=mute>M</b></i>Mute
+      <i><b data-k=stats>H</b></i>Stats
+    </p>
+    <div id=kh>Click a key to change it <button class=lk id=kx>Reset keys</button></div>
+  </div>
+  <!-- VR controls: shown where the browser can do VR, and on any large screen; each binding is a button that
+       steps through the choices (xr.js) -->
+  <div id=r>
+    <p class=rt>VR controls <span>· click to change</span></p>
+    <p class=rg>
+      <button data-v=move></button><span>Swim where you look</span>
+      <b data-v=turn></b><span>Turn · rise / sink</span>
+      <button data-v=point></button><span>Swim where you point</span>
+      <button data-v=fast></button><span>Swim faster</span>
+      <button data-v=next></button><span>Next viewpoint</span>
+      <b>Pinch</b><span>Hands: swim where you point</span>
+      <button class=lk id=vx>Reset VR controls</button><span></span>
+    </p>
+  </div>
   </div>
   <p id=f>
     <a href=https://github.com/Noniv/abyssal-garden target=_blank><svg viewBox="0 0 16 16"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>GitHub</a>
