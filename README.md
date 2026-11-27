@@ -1,19 +1,91 @@
-# Abyssal Garden
+# Abyssal Garden VR
 
-**A dreamy underwater world you can swim through, right in your browser.**
+**A dreamy underwater world you can swim through, in your browser or in a Meta Quest 3.**
 
 Towering kelp forests, sunbeams pouring through a rippling surface, a sunken ship, manta rays gliding overhead.
-And all of it is made by code: no images, no 3D models, no sound files. The whole world fits in **one 96 KB HTML file**.
+And all of it is made by code: no images, no 3D models, no sound files. The whole world fits in **one HTML file** of about 100 KB.
+
+This is a fork of [Abyssal Garden](https://github.com/Noniv/abyssal-garden) by Noniv (MIT license) that adds a
+**virtual reality mode** for Meta Quest 3. The original desktop and phone version is unchanged and still works the same way.
 
 ![Kelp forest with a stone whale tail and a manta ray](.github/screenshots/whale-fluke.jpg)
 
-## Try it
+## Try it in VR (Meta Quest 3)
 
-1. Download [`index.html`](index.html).
+1. Put on the headset and open **https://abyssal-garden-vr.vercel.app** in the **Meta Quest Browser**.
+2. Wait while the world is built (the loading bar fills; it can take a little while on the headset).
+3. Press **Enter VR**.
+
+VR uses WebGPU inside WebXR, which the Quest Browser added in 2026 (experimental from version 146, listed as supported in
+version 156). If **Enter VR** is missing or the menu says VR did not start, update the Quest Browser; on older versions
+turn on **WebXR experiments** in `chrome://flags`. The page must be opened over `https://` (or `localhost`): browsers do
+not allow VR on a file opened straight from disk.
+
+### VR controls
+
+| | Controllers | Hands |
+|---|---|---|
+| Swim where you look | Left stick | |
+| Swim where you point | Hold the trigger | Pinch and hold |
+| Rise / sink | Right stick up / down | |
+| Turn | Right stick left / right | Turn your body |
+| Swim faster | Hold grip | |
+| Next viewpoint | A / X | |
+
+### Comfort
+
+Set in the menu before you press **Enter VR**; the page remembers them.
+
+- **Snap turn / Smooth turn**: snap turns 30° per push of the right stick; smooth turns continuously.
+- **Vignette on / off**: darkens the edges of your view while you swim or smooth-turn, which helps with motion sickness.
+
+Swimming is slower in VR than on the desktop (3 m/s, 9 m/s holding grip) and speeds up and slows down gently.
+Rock is solid: if you lean or swim into a wall you are pushed back out.
+
+### Detail and resolution in VR
+
+Two separate settings decide how VR looks and runs:
+
+- **Detail** (Low / Medium / High in the menu) decides how much is in the world: leaves, shadows, anti-aliasing.
+  The Quest starts on **Low**, the setting that runs smoothly on a Quest 3. Medium and High glitch on the headset.
+  The page remembers the last level you picked, so switch back to Low if you tried another one.
+- **VR resolution** (`xrscale`) is how many pixels each eye draws, as a share of the headset's normal VR resolution.
+
+| Detail | VR resolution | Starting draw distance |
+|---|---|---|
+| Low (Quest default) | 0.7 | 0.6 |
+| Medium | 0.75 | 0.8 |
+| High | 0.9 | 1.0 |
+
+The draw distance for plants and rocks then adjusts itself every second to hold the headset's frame rate.
+Bloom (the soft glow) is off in VR to save time.
+
+You can override these by adding options to the link, with no rebuild:
+
+| Option | Example | What it does |
+|---|---|---|
+| `xrscale` | `?xrscale=0.6` | VR resolution per eye (1 = the headset's normal resolution; lower is faster but blurrier) |
+| `xrdet` | `?xrdet=0.8` | Starting draw distance, 0.4 to 1 |
+| `xrbloom` | `?xrbloom=1` | Turns the bloom glow back on in VR |
+
+Options combine with `&`, for example `https://abyssal-garden-vr.vercel.app/?xrscale=0.6&xrdet=0.5`.
+
+To see performance numbers, connect the headset to a computer and open `chrome://inspect`: the page prints a line with
+the frame rate, GPU time, draw distance and per-eye resolution every two seconds.
+
+### Status
+
+Tested on a Meta Quest 3 in November 2026: Low detail at 0.7 resolution runs well; Medium is a little glitchy and High
+glitches badly. Still worth checking on the headset: how hand tracking and the comfort settings feel, and that the sound
+keeps playing in VR (it is ambient stereo; it does not follow your head).
+
+## Try it on a computer or phone
+
+1. Download [`index.html`](index.html) or open https://abyssal-garden-vr.vercel.app.
 2. Open it in **Chrome** or **Edge** on a desktop computer.
 3. Wait a few seconds while the world is built, then press **Dive in** and start swimming.
 
-Nothing to install, and it works offline. It needs a browser with **WebGPU**. If you see *"This scene needs WebGPU"*, update your browser or switch to Chrome / Edge.
+Nothing to install, and the downloaded file works offline. It needs a browser with **WebGPU**. If you see *"This scene needs WebGPU"*, update your browser or switch to Chrome / Edge.
 
 ## What's down there
 
@@ -31,7 +103,7 @@ Nothing to install, and it works offline. It needs a browser with **WebGPU**. If
 
 ![The purple grotto](.github/screenshots/purple-grotto.jpg)
 
-## Controls
+## Controls (computer and phone)
 
 | | Keyboard & mouse |
 |---|---|
@@ -57,7 +129,7 @@ The **Low**, **Medium** and **High** buttons in the menu pick the detail level; 
 |---|---|---|
 | **High** | The full scene | Computers |
 | **Medium** | Half of the leaves, sparkles and pebbles; small rocks, sponges and corals cast no shadows | Phones with 8 GB of memory |
-| **Low** | A quarter of the leaves, no anti-aliasing, coarser rocks and corals, simpler lighting, 480p to start with | Other phones, and computers with 4 GB of memory or less |
+| **Low** | A quarter of the leaves, no anti-aliasing, coarser rocks and corals, simpler lighting, 480p to start with | Other phones, computers with 4 GB of memory or less, and Meta Quest headsets |
 
 If loading crashes the tab, or the graphics driver gives up, the page starts again one level lower. Your browser remembers the level, and the resolution and draw distance the scene settled on, for the next visit.
 
@@ -91,6 +163,7 @@ This writes a new `index.html` next to this README. `npm run build:readable` wri
 | [`source/src/audio.js`](source/src/audio.js) | The soundscape |
 | [`source/src/quality.js`](source/src/quality.js) | The detail levels: which one a device starts on, and what is remembered between visits |
 | [`source/src/math.js`](source/src/math.js) | Noise, random numbers and mesh-building helpers |
+| [`source/src/xr.js`](source/src/xr.js) | Virtual reality: Enter VR, drawing both eyes, swimming with controllers or hands, comfort options, VR resolution defaults |
 | [`source/src/dev.js`](source/src/dev.js) | Development tools (fly-through and benchmark), only in `dev.html` |
 | [`source/template.html`](source/template.html) | The page around the scene: loading bar, start menu, links and their styles |
 
@@ -99,8 +172,10 @@ Some easy first tweaks:
 - **Water color:** `WCOL` (blue-green water) and `PCOL` (purple grotto) near the top of the shared scene code in `shaders.js`
 - **Sunlight color:** `SUNC` right next to them
 - **Brightness and light rays:** `EXPO` and `RAYS` in `main.js`
-- **Swimming speed:** search for `26 : 7` in `main.js` (fast speed : normal speed)
+- **Swimming speed:** search for `26 : 7` in `main.js` (fast speed : normal speed); in VR, `fast ? 9 : 3` in `xr.js`
+- **VR resolution per detail level:** `XSCALE` near the top of `xr.js` (High, Medium, Low)
 
 ## License
 
-[MIT](LICENSE): free to use, change and share, including in your own projects.
+[MIT](LICENSE): free to use, change and share, including in your own projects. The original Abyssal Garden is by
+[Noniv](https://github.com/Noniv/abyssal-garden); the VR mode was added in this fork.
