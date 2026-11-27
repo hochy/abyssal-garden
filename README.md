@@ -105,11 +105,13 @@ with the same VR mode, comfort options and VR controls panel. Its menu has an **
 | **Garden** | The original kelp forest, ship and whale tail | [Noniv](https://github.com/Noniv/abyssal-garden) | [/](https://abyssal-garden-vr.vercel.app/) |
 | **Shallows** | The garden with a swimmable surface and coastline, jellyfish and reef fish | [nox-do](https://github.com/nox-do/abyssal-garden) | [/maps/shallows/](https://abyssal-garden-vr.vercel.app/maps/shallows/) |
 | **Mine** | A Descent-style reactor mine carved out of rock, flown in a Pyro-GX | [hoyajavis](https://github.com/hoyajavis/abyssal-mine) | [/maps/mine/](https://abyssal-garden-vr.vercel.app/maps/mine/) |
+| **Asteroid** | 15 Eunomia: walk round a small asteroid with its own gravity, jump, and fly on a jetpack | [JNobleA](https://github.com/JNobleA/15-Eunomia) | [/maps/asteroid/](https://abyssal-garden-vr.vercel.app/maps/asteroid/) |
 
 All are MIT-licensed forks of Abyssal Garden; each map folder keeps its source (`maps/<name>/source`, built with
 `npm run build` there) and its license. In VR the Mine is flown like the garden is swum (no roll on the sticks; your
-head does that). Planned next: the 15 Eunomia asteroid and Abyssal Infinite, which need VR wired into their own walking,
-gravity and multiplayer controls.
+head does that). On the Asteroid the headset drives the game's own walking and jetpack: the ground under you is your
+floor wherever you are on the asteroid. Move stick walks (or thrusts, in the air) where you look, the other stick turns
+and thrusts up / down, A / X jumps (hold it to fly), grip boosts. Planned next: Abyssal Infinite.
 
 ## Try it on a computer or phone
 
