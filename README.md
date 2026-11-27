@@ -17,8 +17,11 @@ This is a fork of [Abyssal Garden](https://github.com/Noniv/abyssal-garden) by N
 3. Press **Enter VR**.
 
 VR uses WebGPU inside WebXR, which the Quest Browser added in 2026 (experimental from version 146, listed as supported in
-version 156). If **Enter VR** is missing or the menu says VR did not start, update the Quest Browser; on older versions
-turn on **WebXR experiments** in `chrome://flags`. The page must be opened over `https://` (or `localhost`): browsers do
+version 156). Where a browser has WebXR and WebGPU but not the two joined up, VR still starts: each eye is drawn with
+WebGPU and copied into an ordinary WebGL VR session. That costs one copy per eye, so it is a little slower, but it opens
+the door to other headsets (for example Steam Frame or Apple Vision Pro browsers with WebGPU). The idea comes from
+[strayer's fork](https://github.com/strayer/abyssal-garden-vr). If **Enter VR** is missing or the menu says VR did not
+start, update the browser; on older Quest Browser versions turn on **WebXR experiments** in `chrome://flags`. The page must be opened over `https://` (or `localhost`): browsers do
 not allow VR on a file opened straight from disk.
 
 ### VR controls
@@ -79,6 +82,7 @@ You can override these by adding options to the link, with no rebuild:
 | `xrscale` | `?xrscale=0.6` | VR resolution per eye (1 = the headset's normal resolution; lower is faster but blurrier) |
 | `xrdet` | `?xrdet=0.8` | Starting draw distance, 0.4 to 1 |
 | `xrbloom` | `?xrbloom=1` | Turns the bloom glow back on in VR |
+| `xrgl` | `?xrgl=1` | Uses the WebGL copy path even where the direct WebGPU path exists (for comparing the two) |
 
 Options combine with `&`, for example `https://abyssal-garden-vr.vercel.app/?xrscale=0.6&xrdet=0.5`.
 
@@ -90,6 +94,22 @@ the frame rate, GPU time, draw distance and per-eye resolution every two seconds
 Tested on a Meta Quest 3 in November 2026: Low detail at 0.7 resolution runs well; Medium is a little glitchy and High
 glitches badly. Still worth checking on the headset: how hand tracking and the comfort settings feel, and that the sound
 keeps playing in VR (it is ambient stereo; it does not follow your head).
+
+## Maps
+
+The start menu's **Map** row switches between worlds that other people built on this engine. Each one is its own page
+with the same VR mode, comfort options and VR controls panel. Its menu has an **All maps** link back.
+
+| Map | What it is | By | Page |
+|---|---|---|---|
+| **Garden** | The original kelp forest, ship and whale tail | [Noniv](https://github.com/Noniv/abyssal-garden) | [/](https://abyssal-garden-vr.vercel.app/) |
+| **Shallows** | The garden with a swimmable surface and coastline, jellyfish and reef fish | [nox-do](https://github.com/nox-do/abyssal-garden) | [/maps/shallows/](https://abyssal-garden-vr.vercel.app/maps/shallows/) |
+| **Mine** | A Descent-style reactor mine carved out of rock, flown in a Pyro-GX | [hoyajavis](https://github.com/hoyajavis/abyssal-mine) | [/maps/mine/](https://abyssal-garden-vr.vercel.app/maps/mine/) |
+
+All are MIT-licensed forks of Abyssal Garden; each map folder keeps its source (`maps/<name>/source`, built with
+`npm run build` there) and its license. In VR the Mine is flown like the garden is swum (no roll on the sticks; your
+head does that). Planned next: the 15 Eunomia asteroid and Abyssal Infinite, which need VR wired into their own walking,
+gravity and multiplayer controls.
 
 ## Try it on a computer or phone
 
@@ -194,4 +214,4 @@ Some easy first tweaks:
 ## License
 
 [MIT](LICENSE): free to use, change and share, including in your own projects. The original Abyssal Garden is by
-[Noniv](https://github.com/Noniv/abyssal-garden); the VR mode was added in this fork.
+[Noniv](https://github.com/Noniv/abyssal-garden); the VR mode was added in this fork. The maps keep their authors' credits and licenses (see [Maps](#maps)).
