@@ -12,14 +12,14 @@
 // Hands:        pinch and hold to swim where the hand points
 //
 // URL options for tuning on the headset (no rebuild needed):
-//   ?xrscale=0.6   resolution of the headset's layer (1 = the headset's default; lower is faster and blurrier)
+//   ?xrscale=0.7   resolution of the headset's layer (1 = the headset's default; lower is faster and blurrier)
 //   ?xrdet=0.6     starting draw distance for plants and rocks (0.4 to 1); it then adapts to the frame time
 //   ?xrbloom=1     keep the bloom glow (off in VR by default: 11 extra full-screen passes per eye)
 // The console (chrome://inspect from a computer) gets a line with the frame rate and GPU time every 2 seconds.
 {
   const bVR = $('v'), bOpt = $('x'), note = $('y');
   const URLQ = new URLSearchParams(location.search);
-  const XSCALE = +URLQ.get('xrscale') || [0.9, 0.75, 0.6][LV];
+  const XSCALE = +URLQ.get('xrscale') || [0.9, 0.75, 0.7][LV]; // Low 0.7: tested smooth on a Quest 3
   const XDET = +URLQ.get('xrdet') || [1, 0.8, 0.6][LV];
   const XBLOOM = URLQ.get('xrbloom') === '1';
   // comfort options, kept between visits
