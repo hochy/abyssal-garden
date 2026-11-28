@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang=en>
+<head>
+<meta charset=utf-8>
+<title>Abyssal Infinite</title>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<meta name=theme-color content=#03131c>
+<meta name=description content="An endless multiplayer sea in your browser: play as one of ten creatures, from a crab to a whale.">
+<meta property=og:type content=website>
+<meta property=og:title content="Abyssal Infinite">
+<meta property=og:description content="An endless multiplayer sea in your browser: play as one of ten creatures, from a crab to a whale.">
+<meta property=og:url content=https://abyssal-infinite.wasd.fly/>
+<style>
+/* The class on <body> is the state of the page:
+   l = loading, m = menu, g = in the scene (g p while the mouse is captured, g w while it is asked for), l e = failed to start */
+html { background: #03131c; }
+body {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%; margin: 0; overflow: hidden;
+  background: radial-gradient(#0b3a4d, #03131c 70%);
+  font: 700 clamp(13px, .7vw + .9vh, 36px)/1.4 system-ui, sans-serif; color: #e8fbff;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+/* a phone held upright gets the whole page turned on its side, so the scene is always landscape */
+@media (orientation: portrait) and (pointer: coarse) {
+  body { width: 100dvh; height: 100dvw; transform-origin: 0 0; transform: rotate(90deg) translateY(-100%); }
+}
+
+/* the scene: blurred and dimmed behind the menu, comes into focus when you dive */
+#c {
+  position: absolute; width: 100%; height: 100%; touch-action: none; cursor: crosshair;
+  transition: filter 1s, transform 1s, opacity 2s;
+}
+body:not(.g) #c { filter: blur(1vmax) brightness(.5); transform: scale(1.06); }
+.l #c { opacity: 0; }
+
+/* The menu is laid out in rem, and fitMenu (fit.js) fits the page's rem to the screen. On the loading screen the
+   title and the loading bar (or a first visit's question) stand alone in the middle. In the menu, two columns: the
+   title, the dive button, the creature, the name and the links on the left; the tabs and what they open on the right. */
+#m {
+  position: absolute; inset: 0; display: grid; gap: 1rem 2.4rem; padding: 2rem max(2.8rem, 50% - 44.2rem);
+  grid-template: "t xr" 4.4rem "d a" 5.2rem "cb a" 4.8rem "nm a" 4.4rem ". a" minmax(0, 1fr) "f a" 4.4rem / clamp(22rem, 32%, 27.2rem) minmax(0, 1fr);
+  background: radial-gradient(#03131c00 30%, #03131ccc); transition: opacity .5s, visibility .5s;
+}
+.l #m { grid-template: none; place-content: center; justify-items: center; gap: 3rem; padding: 2rem; text-align: center; }
+.l #m > :not(h1, #l), body:not(.l) #l { display: none; }
+.g #m { opacity: 0; visibility: hidden; }
+/* (the title's size in the menu: as wide as the column under it, set by fitMenu) */
+h1 {
+  grid-area: t; align-self: center; justify-self: start; margin: 0; white-space: nowrap;
+  font: 900 2.8rem/1 system-ui, sans-serif; letter-spacing: .05em; text-transform: uppercase;
+  color: #0000; background: linear-gradient(#fff 25%, #7ff3ff 60%, #14a9c4);
+  -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 .06em .2em #000c);
+}
+.l h1 { grid-area: auto; justify-self: center; font-size: 4rem; }
+p { margin: 0; }
+#l { width: 42rem; max-width: 100%; }
+#s, #w, #z p { font-size: 1.2rem; letter-spacing: .12em; text-transform: uppercase; }
+#w { margin-top: 1.2rem; color: #7ff3ff; text-wrap: balance; }
+
+/* a first visit's question (quality.js) and the loading bar share one cell, so neither moves anything when one gives
+   way to the other */
+#lt { display: grid; align-items: center; } #lt > * { grid-area: 1/1; }
+#z, #lb { transition: opacity .6s, visibility .6s; }
+#z, #l.z #lb { visibility: hidden; opacity: 0; } #l.z #z { visibility: visible; opacity: 1; }
+#z p + div + p { color: #7ff3ff; }
+#z div { margin: 1.4rem 0; }
+
+/* loading bar */
+#p {
+  height: .8rem; margin: .4rem 0 1rem; overflow: hidden; border-radius: 1em; background: #03131c;
+  box-shadow: 0 0 0 2px #7ff3ff80, 0 0 1.5em #14a9c4;
+}
+#b {
+  display: block; height: 100%; background: linear-gradient(90deg, #14a9c4, #9ff6ff);
+  transform: scaleX(0); transform-origin: 0; will-change: transform;
+}
+.e #p { visibility: hidden; }
+.e #s { font-size: 1.3rem; letter-spacing: 0; text-transform: none; }
+
+/* buttons */
+button, a {
+  display: flex; align-items: center; justify-content: center; gap: .6em; padding: .8em 1.4em; border: 0;
+  border-radius: .5em; background: #fff; box-shadow: inset 0 -.2em #0003, 0 .3em 1em #0009;
+  font: 800 1em/1.2 system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; text-decoration: none;
+  color: #03222d; cursor: pointer; transition: transform .12s, filter .12s;
+}
+@media (hover: hover) { button:hover, a:hover { transform: translateY(-.12em); filter: brightness(1.15); } }
+button:active, a:active { transform: translateY(.1em); filter: brightness(.9); }
+/* A focus ring only for someone going through the menu with Tab (the class k on <html>, main.js): the dive button
+   takes the focus by itself whenever the menu opens, so that Enter dives, and must not be ringed for that. */
+:focus, :focus-visible { outline: none; }
+.k :focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+svg { width: 1.5em; height: 1.5em; fill: currentColor; }
+/* what is lit: the dive button, the Home button before it once a dive has begun (a phone, which has no key 1, has it
+   from the start), the open tab, the chosen option, the chosen species */
+#d, #dh, #m .on { background: linear-gradient(#9ff6ff, #19c3d6); box-shadow: inset 0 -.3rem #0003; color: #03222d; }
+#dr { grid-area: d; display: flex; gap: .8rem; }
+#d, #dh { padding: 0; font-size: 1.7rem; box-shadow: inset 0 -.3rem #0003, 0 0 2.4rem #19c3d6b3; }
+#d { flex: 1; } #dh { flex: none; width: 5.2rem; } #dh[hidden] { display: none; } #dh svg { width: 2rem; height: 2rem; }
+/* dark plates: the tabs, the creature button, the name */
+#xr button, #cb, #nm { border-radius: .8rem; background: #03131cb3; box-shadow: inset 0 0 0 2px #7ff3ff59; }
+#xr { grid-area: xr; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6rem; }
+#xr button { position: relative; padding: 0 .4rem; color: #7ff3ff; font-size: 1.15rem; letter-spacing: .1em; }
+/* (a dot on Graphics and World while they hold choices not applied yet) */
+#xr .ch::after { content: ''; position: absolute; top: .6rem; right: .6rem; width: .7rem; height: .7rem; border-radius: 50%; background: #ffd27a; }
+
+/* GitHub and More games (the repository, and the site the game belongs to): at the bottom of the left column */
+#f { grid-area: f; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: .6rem; }
+#f > * { display: grid; justify-items: center; align-content: center; gap: .2rem; padding: 0 .2rem; border-radius: .8rem; font-size: .9rem; letter-spacing: .06em; white-space: nowrap; }
+#f svg { width: 1.4rem; height: 1.4rem; }
+
+/* what the tabs open: an area that scrolls under a rail of its own (fit.js), its edges fading where there is more */
+#a { grid-area: a; position: relative; min-height: 0; border-radius: 1.2rem; background: #03131c66; text-align: left; container-type: inline-size; }
+#sc { position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; padding: 1rem; -webkit-mask-image: var(--f); mask-image: var(--f); }
+#sc::-webkit-scrollbar { display: none; }
+#a.t #sc { --f: linear-gradient(#0000, #000 2.8rem); } #a.b #sc { --f: linear-gradient(#000 calc(100% - 2.8rem), #0000); }
+#a.t.b #sc { --f: linear-gradient(#0000, #000 2.8rem, #000 calc(100% - 2.8rem), #0000); }
+#sc > * { display: grid; gap: .8rem; align-content: start; } #sc > [hidden] { display: none; }
+/* (the rail in the area's right margin, beside what scrolls) */
+#rl { position: absolute; top: 1rem; bottom: 1rem; right: .1rem; width: .8rem; border-radius: 9em; background: #7ff3ff1a; touch-action: none; cursor: pointer; }
+#rl[hidden] { display: none; }
+#rt { position: absolute; left: .15rem; right: .15rem; border-radius: 9em; background: linear-gradient(#9ff6ff, #19c3d6); box-shadow: 0 0 1rem #19c3d6aa; cursor: grab; }
+
+/* a setting: its name, then one switch of its options across the row (a plate, the chosen option lit in it), every
+   option a 4.4rem high segment of it; the first visit's question is such a switch too */
+#y p, #yw p, #ys p, #tc { display: grid; grid-template-columns: 11.8rem minmax(0, 1fr); align-items: center; gap: .6rem .8rem; }
+#y span, #yw span, #ys span, #tc span { color: #7ff3ff; font-size: 1.1rem; letter-spacing: .12em; text-transform: uppercase; line-height: 1.15; }
+#z div, #a span + i { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: .4rem; padding: .4rem; border-radius: 1.2rem; background: #03131cb3; box-shadow: inset 0 0 0 2px #7ff3ff2e; font-style: normal; }
+#z button, #a i button { height: 4.4rem; min-width: 0; padding: 0 .2rem; background: none; box-shadow: none; color: #e8fbff; font-size: 1.1rem; letter-spacing: .06em; }
+@media (hover: hover) { #z button:not(.on):hover, #a i button:not(.on):hover { background: #7ff3ff26; } }
+#a i .on { pointer-events: none; }
+@container (max-width: 42rem) { #y p, #yw p, #ys p, #tc { grid-template-columns: minmax(0, 1fr); } }
+
+/* list of controls: two groups, key caps right-aligned against their labels */
+#k { display: grid; grid-template-columns: repeat(2, minmax(0, auto)); justify-content: center; gap: 2rem; padding: .8rem .4rem; font-size: 1.1rem; letter-spacing: .1em; text-transform: uppercase; }
+#k p { display: grid; grid-template-columns: auto 1fr; align-content: start; align-items: center; gap: .9rem 1.2rem; }
+#k p + p { padding-left: 2rem; border-left: 2px solid #7ff3ff40; }
+#k i { display: flex; justify-self: end; align-items: center; gap: .4rem; font-style: normal; }
+#k b, #r b {
+  min-width: 2.4rem; padding: .3rem .7rem; border-radius: .6rem; background: #e8fbff;
+  box-shadow: inset 0 -.15em #0004; color: #03222d; text-align: center;
+}
+/* a touch screen's instead: the Scheme switch, and how that scheme works, a row a gesture */
+#h, #tc { display: none; }
+/* VR (xr.js): the headset's controls under the keys, shown where the browser can do VR; Enter VR and the comfort
+   switches in the place of the name (this copy has no server, so no name) */
+#r { display: none; justify-content: center; padding: 1.6rem .4rem .8rem; border-top: 2px solid #7ff3ff40; font-size: 1.1rem; letter-spacing: .1em; text-transform: uppercase; }
+#r.vr { display: grid; }
+#r p { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .9rem 1.2rem; }
+#r em { font-style: normal; color: #7ff3ff; font-size: 1em; font-weight: 600; letter-spacing: .14em; }
+#r i { display: flex; justify-self: end; font-style: normal; }
+#r b { white-space: nowrap; }
+#vo { grid-area: nm; display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: .6rem; }
+#vo[hidden], #vn[hidden] { display: none; }
+#vo button { padding: 0 .3rem; border-radius: .8rem; background: #03131cb3; box-shadow: inset 0 0 0 2px #7ff3ff59; color: #7ff3ff; font-size: 1.05rem; letter-spacing: .08em; }
+#vo #v { background: linear-gradient(#9ff6ff, #19c3d6); box-shadow: inset 0 -.3rem #0003; color: #03222d; font-size: 1.25rem; }
+#vn { grid-column: 1; grid-row: 5; align-self: start; color: #ffd27a; font-size: 1.1rem; letter-spacing: .04em; }
+#h p { display: grid; grid-template-columns: 4rem 1fr; align-items: center; gap: .8rem; min-height: 4.4rem; padding: 0 1rem; border-radius: .8rem; background: #03131cb3; font-size: 1.1rem; letter-spacing: .1em; text-transform: uppercase; }
+#h svg { width: 2.4rem; height: 2.4rem; justify-self: center; color: #7ff3ff; }
+/* phones, playing a creature: three round buttons beside the sonar (bite, gurgle, burst), and the joystick's ring
+   where the left thumb went down (the Controls row of the menu) */
+#tb { position: fixed; right: calc(clamp(120px, 26vmin, 320px) + 5vmin); bottom: 3vmin; display: none; gap: 2.5vmin; }
+#tb button { width: 17vmin; height: 17vmin; padding: 0; border-radius: 50%; background: #03222d99; box-shadow: inset 0 0 0 2px #7ff3ff80; color: #e8fbff; font-size: .75em; letter-spacing: .06em; touch-action: none; transform: none; filter: none; }
+#tb .on { background: #19c3d6b3; }
+/* and left of the menu button, the camera further and nearer */
+#tz { position: absolute; top: .6em; right: calc(1.6em + 44px); display: none; gap: .5em; font-size: 1.3em; }
+#tz button { min-width: 44px; min-height: 44px; padding: .3em .6em; background: #03222dd9; box-shadow: inset 0 0 0 2px #7ff3ff, 0 .3em 1em #0009; color: #e8fbff; opacity: .8; touch-action: manipulation; transform: none; filter: none; }
+#tj { position: fixed; display: none; width: 28vmin; height: 28vmin; margin: -14vmin 0 0 -14vmin; border-radius: 50%; background: #03131c40; box-shadow: inset 0 0 0 2px #7ff3ff59; pointer-events: none; }
+#tj i { position: absolute; left: 50%; top: 50%; width: 11vmin; height: 11vmin; margin: -5.5vmin; border-radius: 50%; background: #7ff3ff80; }
+/* the sonar: a disc at the bottom right while diving, all of it on the screen; at the bottom left, who the player is */
+#so { position: fixed; right: 2vmin; bottom: 2vmin; width: clamp(120px, 26vmin, 320px); height: clamp(120px, 26vmin, 320px); pointer-events: none; display: none; }
+#sn { display: block; width: 100%; height: 100%; }
+#hu { position: fixed; left: 2.4vmin; bottom: 2vmin; margin: 0; pointer-events: none; display: none; font-size: .7em; letter-spacing: .12em; text-transform: uppercase; color: #7ff3ffb0; text-shadow: 0 1px 6px #000a; }
+#hu b { color: #e8fbff; font-weight: 600; }
+/* under it, the stamina for dashes */
+#st { display: block; width: 11em; height: .32em; margin-top: .5em; border-radius: 9em; background: #7ff3ff2e; overflow: hidden; }
+#sb { display: block; height: 100%; width: 100%; background: #7ff3ff; }
+/* over it the health (flashes when bitten), and above the name what has just happened */
+#hb { display: block; width: 11em; height: .5em; margin-top: .5em; border-radius: 9em; background: #7ff3ff2e; overflow: hidden; }
+#hf { display: block; height: 100%; width: 100%; background: #7fe08a; }
+#hb.h { box-shadow: 0 0 0 2px #ff5e5b; }
+#hm { display: block; min-height: 1.4em; margin-bottom: .3em; color: #ffe9a8; }
+#hw { display: block; }
+#hn { display: block; color: #8fe6c3; }
+.g #so, .g #hu { display: block; }
+/* the creature button and the player's name (the name only where there is a server) */
+#nm { grid-area: nm; min-width: 0; padding: 0 1.2rem; border: 0; color: #e8fbff; font: inherit; font-size: 1.3rem; letter-spacing: .08em; text-align: center; outline: none; }
+#nm:focus { box-shadow: inset 0 0 0 2px #7ff3ff; } #nm::placeholder { color: #7ff3ff80; text-transform: uppercase; letter-spacing: .12em; }
+/* the chosen creature's picture, "Choose creature" over its name, an arrow that says there is more; while the creature
+   panel is open the button is ringed as it glows on a first visit, but steadily */
+#cb { grid-area: cb; justify-content: flex-start; padding: .55em .8em; color: #7ff3ff; font-size: 1.25rem; letter-spacing: .12em; }
+#cb span { display: grid; gap: .1em; text-align: left; line-height: 1.15; }
+#cl { font-style: normal; font-size: .78em; }
+#cb b { color: #e8fbff; }
+#ct { width: 3.2em; aspect-ratio: 64 / 30; flex: none; }
+.bk { width: 1.1em; height: 1.1em; flex: none; }
+#cch { margin-left: auto; }
+#cb.w { box-shadow: inset 0 0 0 2px #7ff3ff, 0 0 1.6em #19c3d6; }
+/* until a creature has ever been chosen the button glows in and out */
+#cb.n { animation: cb 2.4s ease-in-out infinite; }
+@keyframes cb { 50% { box-shadow: inset 0 0 0 2px #7ff3ff, 0 0 1.6em #19c3d6; } }
+/* a question over the menu (unsaved graphics settings), in the menu's own plates and buttons */
+#u { position: fixed; inset: 0; z-index: 1; display: grid; place-content: center; padding: 1rem; background: #03131ce6; text-align: center; }
+#u[hidden] { display: none; }
+#u div { display: grid; gap: .8rem; width: 34rem; max-width: 100%; padding: 1.8rem 2rem; border-radius: 1.2rem; background: #03222d; box-shadow: inset 0 0 0 2px #7ff3ff59, 0 1rem 4rem #000c; }
+#u p { font-size: 1.2rem; letter-spacing: .12em; text-transform: uppercase; }
+#u p + p { margin-bottom: .6rem; color: #7ff3ff; text-transform: none; letter-spacing: .02em; font-weight: 600; font-size: 1.3rem; }
+#u button { height: 4.4rem; padding: 0; font-size: 1.2rem; background: #03131cb3; box-shadow: inset 0 0 0 2px #7ff3ff59; color: #7ff3ff; }
+#u #ua { background: linear-gradient(#9ff6ff, #19c3d6); box-shadow: inset 0 -.3rem #0003; color: #03222d; }
+/* the creature panel: the species, the model to turn, what to know about it */
+#cs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .6rem; }
+#cs button { display: grid; justify-items: center; align-content: center; gap: .2rem; height: 5.2rem; min-width: 0; padding: 0 .2rem; border-radius: .8rem; background: #03131cb3; box-shadow: inset 0 0 0 2px #7ff3ff2e; color: #e8fbff; font-size: 1.05rem; letter-spacing: .02em; text-transform: none; }
+@media (hover: hover) { #cs button:not(.on):hover { background: #7ff3ff33; } }
+#cs canvas { width: 3.8rem; aspect-ratio: 64 / 30; }
+#cs span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+#cw { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: .8rem; align-items: start; }
+/* (the model's picture is drawn at the canvas's size, which follows its width only) */
+#cv { width: 100%; aspect-ratio: 4 / 3; border-radius: 1.2rem; background: radial-gradient(circle at 50% 30%, #0e5a70, #052635 75%); touch-action: none; cursor: grab; }
+#ci { padding: 1.2rem 1.4rem; border-radius: 1.2rem; background: #03131cb3; font-size: 1.2rem; text-transform: none; letter-spacing: .01em; line-height: 1.35; }
+#ci h3 { margin: 0; font-size: 1.5em; color: #e8fbff; }
+#ci p { margin: .45em 0 0; }
+#ci .k { margin-top: 0; color: #7ff3ff; text-transform: uppercase; letter-spacing: .1em; font-size: .8em; }
+#ci .t { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .4em; }
+#ci .t span { background: #0a2a3a; border-radius: .5em; padding: .35em .6em; color: #8fb9c4; font-size: .85em; }
+#ci .t b { display: block; color: #e8fbff; font-size: 1.25em; }
+#ci .l { color: #8fb9c4; font-size: .85em; }
+#ci .c { margin-top: .2em; display: flex; flex-wrap: wrap; gap: .3em; }
+#ci .c i { font-style: normal; font-size: .85em; padding: .1em .6em; border-radius: 9em; border: 1px solid #134a5e; color: #8fb9c4; }
+#ci .c .e { color: #57e3d8; border-color: #57e3d866; } #ci .c .d { color: #ff7a66; border-color: #ff7a6666; } #ci .c .f { color: #d9c98a; border-color: #d9c98a66; }
+#ci .n { color: #c4dde4; font-size: .92em; }
+@container (max-width: 42rem) { #cs { grid-template-columns: repeat(4, minmax(0, 1fr)); } #cw { grid-template-columns: minmax(0, 1fr); } }
+@media (pointer: coarse) {
+  #m { padding-inline: max(4.4rem, 50% - 42.6rem); }
+  #k { display: none; }
+  #h, #tc { display: grid; } #h { gap: .6rem; }
+  /* what is pressed in the scene is a fingertip wide */
+  #o { min-width: 44px; min-height: 44px; }
+  .g #tb.c, .g #tz.c { display: flex; }
+}
+
+/* in the scene: a small menu button (hidden while the mouse is captured, Esc does the same) and the stats line */
+#o {
+  position: absolute; top: .6em; right: .6em; display: none; padding: .3em .6em; background: #03222dd9;
+  box-shadow: inset 0 0 0 2px #7ff3ff, 0 .3em 1em #0009; font-size: 1.3em; color: #e8fbff; opacity: .8;
+}
+#o svg, #tz svg { width: 1em; height: 1em; }
+.g #o { display: flex; }
+.p #o, .w #o { display: none; }
+#i {
+  position: absolute; top: 1em; left: 1.2em; margin: 0; font: .8em/1.6 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap; text-shadow: 0 1px 4px #000; pointer-events: none;
+}
+</style>
+</head>
+<body class=l>
+<canvas id=c></canvas>
+<div id=so><canvas id=sn></canvas></div>
+<div id=hu><span id=hm></span><span id=hn></span><span id=hw></span><i id=hb><i id=hf></i></i><i id=st><i id=sb></i></i></div>
+<div id=m>
+  <h1>Abyssal Infinite</h1>
+  <div id=l><div id=lt><div id=lb><div id=p><i id=b></i></div><p id=s>Diving…</p><p id=w hidden>Use Google Chrome for optimal experience</p></div><div id=z><p>Choose the graphics</p><div><button>Low</button><button>Medium</button><button>High</button></div><p>You can change it later in the menu</p></div></div></div>
+  <div id=dr><button id=dh hidden aria-label=Home><svg viewBox="0 0 24 24"><path d="M12 3 2 12h3v8.5h5.2v-6h3.6v6H19V12h3z"/></svg></button><button id=d>Dive in</button></div>
+  <div id=xr><button id=xc class=on>Controls</button><button id=x>Graphics</button><button id=xw>World</button><button id=xs>Sound</button></div>
+  <button id=cb><canvas id=ct></canvas><span><i id=cl>Choose creature</i><b id=cn>Free camera</b></span><svg id=cch class=bk viewBox="0 0 24 24"><path d="m9 5 7 7-7 7-1.8-1.8 5.2-5.2-5.2-5.2z"/></svg></button>
+  <p id=vo hidden><button id=v>Enter VR</button><button class=vt>Snap turn</button><button class=vt>Vignette on</button></p>
+  <p id=vn hidden></p>
+  <input id=nm maxlength=16 placeholder="Your name" title="Your name for other players" autocomplete=off spellcheck=false>
+  <p id=f>
+    <a href=../../><svg viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg>All maps</a>
+    <a href=https://github.com/alexz006/abyssal-infinite target=_blank><svg viewBox="0 0 16 16"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>GitHub</a>
+    <a href=https://wasd.fly target=_blank><svg viewBox="0 0 24 24"><path d="M9.5 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM2 12h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1zm7.5 0h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1zm7.5 0h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z"/></svg>More games</a>
+  </p>
+  <div id=a><div id=sc>
+    <div id=kp>
+      <div id=k>
+        <p>
+          <i><b>W</b><b>A</b><b>S</b><b>D</b></i>Swim
+          <i><b>Q</b><b>E</b></i>Down / up
+          <i><b>Shift</b></i>Faster
+          <i><b>Shift</b>×2</i>Burst of speed
+          <i><b>LMB</b></i>Bite, strike, feed
+          <i><b>RMB</b></i>Gurgle
+          <i><b>Wheel</b></i>Camera nearer, further
+        </p>
+        <p>
+          <i><b>Esc</b></i>Menu
+          <i><b>M</b></i>Mute
+          <i><b>H</b></i>Stats
+          <i><b>F11</b></i>Full screen
+          <i><b>1</b>–<b>6</b></i>Home viewpoints
+          <i><b>7</b>–<b>0</b></i>Into the deep
+          <i><b>Z</b></i>Sonar range
+        </p>
+      </div>
+      <div id=r>
+        <p>
+          <em>In VR</em><em></em>
+          <i><b data-x=move>Left stick</b></i>Swim where you look
+          <i><b data-x=turn>Right stick</b></i>Turn · rise / sink
+          <i><b data-x=point>Trigger</b></i>Bite, strike, feed
+          <i><b data-x=fast>Grip</b></i>Faster
+          <i><b data-x=next>A / X</b></i>Burst of speed
+          <i><b data-x=gur>B / Y</b></i>Gurgle
+          <i><b>Pinch</b></i>Swim (hands)
+        </p>
+      </div>
+      <p id=tc><span>Scheme</span><i><button>One finger</button><button>Joystick</button></i></p>
+      <div id=h></div>
+    </div>
+    <div id=y hidden>
+      <p id=q><span>Detail</span><i><button>Low</button><button>Medium</button><button>High</button></i></p>
+      <p><span>Surface</span><i><button>Flat</button><button>Waves</button></i></p>
+      <p><span>Distance</span><i><button>Near</button><button>Medium</button><button>Far</button></i></p>
+      <p><span>Resolution</span><i><button>Auto</button><button>50%</button><button>75%</button><button>100%</button></i></p>
+      <p><span>Frame rate</span><i><button>30</button><button>60</button><button>Max</button></i></p>
+      <p><span>Plants</span><i><button>Sparse</button><button>Medium</button><button>Dense</button></i></p>
+      <p><span>Shadows</span><i><button>Low</button><button>Medium</button><button>High</button></i></p>
+      <p><span>Smoothing</span><i><button>Off</button><button>4x</button></i></p>
+      <p><span>Light rays</span><i><button>Off</button><button>Low</button><button>High</button></i></p>
+      <p><span>Animal shadows</span><i><button>Off</button><button>Few</button><button>All</button></i></p>
+    </div>
+    <div id=yw hidden>
+      <p id=v><span>Water</span><i><button>Lagoon</button><button>Clear</button><button>Crystal</button></i></p>
+      <p><span>Creatures</span><i><button>Few</button><button>Medium</button><button>Many</button></i></p>
+      <p><span>Time</span><i><button>Morning</button><button>Noon</button><button>Evening</button><button>Night</button></i></p>
+      <p><span>Colours</span><i><button>Vivid</button><button>Natural</button></i></p>
+      <p><span>Floating rocks</span><i><button>Off</button><button>On</button></i></p>
+      <p class=h><span>HUD</span><i><button>Off</button><button>On</button></i></p>
+    </div>
+    <div id=ys hidden>
+      <p><span>Volume</span><i><button>Off</button><button>Low</button><button>Medium</button><button>High</button></i></p>
+      <p><span>Water</span><i><button>Off</button><button>Low</button><button>Medium</button><button>High</button></i></p>
+      <p><span>Music</span><i><button>Off</button><button>Low</button><button>Medium</button><button>High</button></i></p>
+      <p><span>Sea life</span><i><button>Off</button><button>Low</button><button>Medium</button><button>High</button></i></p>
+      <p><span>Gurgling</span><i><button>Off</button><button>Low</button><button>Medium</button><button>High</button></i></p>
+    </div>
+    <div id=cp hidden>
+      <div id=cs></div>
+      <div id=cw><canvas id=cv></canvas><div id=ci></div></div>
+    </div>
+  </div><i id=rl><i id=rt></i></i></div>
+  <div id=u hidden><div>
+    <p>Settings were changed</p>
+    <p>They take effect after the page reloads.</p>
+    <button id=ua>Apply and reload</button>
+    <button id=ud>Discard changes</button>
+    <button id=uk>Keep editing</button>
+  </div></div>
+</div>
+<script>
+/*EARLY*/
+</script>
+<button id=o aria-label=Menu><svg viewBox="0 0 24 24"><path d="M3 5h18v2.6H3zm0 5.7h18v2.6H3zm0 5.7h18V19H3z"/></svg></button>
+<div id=tb><button id=t2></button><button id=t1></button><button id=t3>Burst</button></div>
+<div id=tz><button id=tm aria-label="Camera further"><svg viewBox="0 0 24 24"><path d="M4 10.7h16v2.6H4z"/></svg></button><button id=tp aria-label="Camera nearer"><svg viewBox="0 0 24 24"><path d="M10.7 4h2.6v6.7H20v2.6h-6.7V20h-2.6v-6.7H4v-2.6h6.7z"/></svg></button></div>
+<div id=tj><i></i></div>
+<pre id=i></pre>
+<script>
+/*SCRIPT*/
+</script>
+</body>
+</html>

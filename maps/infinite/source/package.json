@@ -1,0 +1,14 @@
+{
+  "name": "abyssal-infinite",
+  "private": true,
+  "description": "An endless procedural underwater world rendered with WebGPU, bundled into one HTML file (fork of Noniv/abyssal-garden)",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:readable": "node build.mjs --readable",
+    "build:dev": "node build.mjs --dev"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
