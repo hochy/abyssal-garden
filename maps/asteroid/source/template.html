@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang=en>
+<head>
+<meta charset=utf-8>
+<title>15 Eunomia</title>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<meta name=theme-color content=#07061a>
+<style>
+/* The class on <body> is the state of the page:
+   l = loading, m = start page (m r = paused), g = in the scene (g p while the mouse is captured), l e = failed to start */
+html { background: #07061a; }
+body {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%; margin: 0; overflow: hidden; background: #07061a;
+  font: 400 clamp(13px, .7vw + .9vh, 36px)/1.5 system-ui, sans-serif; letter-spacing: .22em; text-transform: uppercase;
+  color: #f1ecff; -webkit-user-select: none; user-select: none;
+}
+/* a phone held upright gets the whole page turned on its side, so the scene is always landscape */
+@media (orientation: portrait) and (pointer: coarse) {
+  body { width: 100dvh; height: 100dvw; transform-origin: 0 0; transform: rotate(90deg) translateY(-100%); }
+}
+
+/* the scene: fades in from black once loaded, plain behind the start page, dimmed behind the pause page */
+canvas {
+  position: absolute; width: 100%; height: 100%; touch-action: none; cursor: crosshair;
+  transition: filter .6s, opacity 3s;
+}
+.l canvas { opacity: 0; }
+.r canvas { filter: brightness(.35); }
+
+/* start page: the title and one line to click in the bottom left corner, small print in the bottom right */
+#m {
+  position: absolute; inset: 0; cursor: pointer; background: linear-gradient(20deg, #07061ae6, #07061a00 55%);
+  transition: opacity .8s, visibility .8s;
+}
+.g #m { opacity: 0; visibility: hidden; }
+#a, #x { position: absolute; bottom: max(1.6em, 5vmin); display: grid; gap: 1.1em; }
+#a { left: max(1.6em, 5vmin); justify-items: start; }
+#x { right: max(1.6em, 5vmin); justify-items: end; }
+#y { margin-bottom: -.5em; }
+h1 { margin: 0; font: 200 2.6em/1.1 system-ui, sans-serif; letter-spacing: .42em; text-shadow: 0 0 1.2em #07061a; }
+p { margin: 0; }
+button, a { all: unset; cursor: pointer; }
+:focus-visible { outline: 1px solid #fff; outline-offset: .5em; }
+#s, #w, #d, #q, #y, #f, #k, #t { font-size: .72em; text-shadow: 0 1px .5em #07061a; }
+#w, #q, #y, #f { color: #b9a8ff; }
+#q button:hover, #f:hover { color: #fff; }
+/* quality: three choices in a row, the current one white and underlined */
+#q { display: flex; gap: 1.4em; }
+#q span { color: #f1ecff; }
+#q .on { padding-bottom: .3em; border-bottom: 1px solid; color: #fff; cursor: default; }
+/* VR: the Enter VR button and its two comfort toggles in one row, like the quality row */
+#vo { display: flex; gap: 1.4em; font-size: .72em; color: #b9a8ff; text-shadow: 0 1px .5em #07061a; }
+#vo[hidden], #vn[hidden] { display: none; }
+#v { color: #ffd27f; }
+#vo button:hover, #f2:hover, #home:hover { color: #fff; }
+#vn { max-width: 30em; font-size: .72em; letter-spacing: .05em; text-transform: none; color: #ffd27f; }
+#f2, #home { font-size: .72em; color: #b9a8ff; text-shadow: 0 1px .5em #07061a; }
+.l #vo { display: none; }
+#d { font-size: .82em; color: #d9ccff; animation: 1.8s ease-in-out infinite alternate d; }
+@keyframes d { from { opacity: .5; } }
+.l #d, .l #q, .m #s, .r #w { display: none; }
+.e #s { letter-spacing: .05em; text-transform: none; }
+
+/* loading: a hairline along the bottom edge */
+#p { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; transition: opacity 1s; }
+#b {
+  display: block; height: 100%; background: linear-gradient(90deg, #6b4fe0, #d9ccff);
+  transform: scaleX(0); transform-origin: 0; will-change: transform;
+}
+.m #p, .e #p { opacity: 0; }
+
+/* pause page: the list of controls in the middle, keys right-aligned against their labels */
+#k {
+  position: absolute; inset: 0; width: max-content; height: max-content; margin: auto; display: none;
+  grid-template-columns: auto auto; gap: .8em 2.4em;
+}
+#k b { justify-self: end; font-weight: 400; color: #b9a8ff; }
+.r #k { display: grid; }
+@media (pointer: coarse), (max-height: 24em) {
+  .r #k { display: none; }
+}
+
+/* in the scene: a small menu button (hidden while the mouse is captured, Esc does the same), the stats line, and
+   the hints that teach the controls as they are first needed */
+#o {
+  position: absolute; top: .6em; right: .6em; display: none; padding: .1em .5em; font-size: 1.3em; letter-spacing: 0;
+  opacity: .6;
+}
+.g #o { display: block; }
+.p #o { display: none; }
+#i {
+  position: absolute; top: 1em; left: 1.2em; margin: 0; font: .8em/1.6 ui-monospace, Consolas, monospace;
+  letter-spacing: 0; text-transform: none; white-space: pre-wrap; text-shadow: 0 1px 4px #000; pointer-events: none;
+}
+#t {
+  position: absolute; left: 0; right: 0; bottom: max(1.6em, 5vmin); text-align: center; opacity: 0;
+  transition: opacity 1.2s; pointer-events: none;
+}
+.g #t.on { opacity: .85; }
+</style>
+</head>
+<body class=l>
+<canvas id=c></canvas>
+<div id=m>
+  <div id=k>
+    <b>W A S D</b>Walk / thrust
+    <b>Mouse</b>Look
+    <b>Space</b>Jump / thrust up
+    <b>Q</b>Thrust down
+    <b>Shift</b>Boost
+    <b>1 - 6</b>Viewpoints
+    <b>Esc</b>Pause
+    <b>M</b>Mute
+    <b>H</b>Stats
+  </div>
+  <div id=a>
+    <h1>15 Eunomia</h1>
+    <p id=s>Igniting…</p>
+    <p id=w hidden>Best in Google Chrome</p>
+    <button id=d></button>
+    <p id=vo hidden><button id=v>Enter VR</button><button class=vt>Snap turn</button><button class=vt>Vignette on</button></p>
+    <p id=vn hidden></p>
+  </div>
+  <div id=x>
+    <p id=q><span>Quality</span><button>Low</button><button>Medium</button><button>High</button></p>
+    <p id=y>This version by JNobleA</p>
+    <a id=f href=https://github.com/Noniv/abyssal-garden target=_blank>Built on Abyssal Garden by Noniv</a>
+    <a id=f2 href=https://github.com/JNobleA/15-Eunomia target=_blank>15 Eunomia by JNobleA · VR added</a>
+    <a id=home href=../../>← All maps</a>
+  </div>
+  <div id=p><i id=b></i></div>
+</div>
+<button id=o aria-label=Menu>≡</button>
+<pre id=i></pre>
+<p id=t></p>
+<script>
+/*SCRIPT*/
+</script>
+</body>
+</html>

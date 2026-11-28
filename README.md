@@ -17,8 +17,11 @@ This is a fork of [Abyssal Garden](https://github.com/Noniv/abyssal-garden) by N
 3. Press **Enter VR**.
 
 VR uses WebGPU inside WebXR, which the Quest Browser added in 2026 (experimental from version 146, listed as supported in
-version 156). If **Enter VR** is missing or the menu says VR did not start, update the Quest Browser; on older versions
-turn on **WebXR experiments** in `chrome://flags`. The page must be opened over `https://` (or `localhost`): browsers do
+version 156). Where a browser has WebXR and WebGPU but not the two joined up, VR still starts: each eye is drawn with
+WebGPU and copied into an ordinary WebGL VR session. That costs one copy per eye, so it is a little slower, but it opens
+the door to other headsets (for example Steam Frame or Apple Vision Pro browsers with WebGPU). The idea comes from
+[strayer's fork](https://github.com/strayer/abyssal-garden-vr). If **Enter VR** is missing or the menu says VR did not
+start, update the browser; on older Quest Browser versions turn on **WebXR experiments** in `chrome://flags`. The page must be opened over `https://` (or `localhost`): browsers do
 not allow VR on a file opened straight from disk.
 
 ### VR controls
@@ -79,6 +82,7 @@ You can override these by adding options to the link, with no rebuild:
 | `xrscale` | `?xrscale=0.6` | VR resolution per eye (1 = the headset's normal resolution; lower is faster but blurrier) |
 | `xrdet` | `?xrdet=0.8` | Starting draw distance, 0.4 to 1 |
 | `xrbloom` | `?xrbloom=1` | Turns the bloom glow back on in VR |
+| `xrgl` | `?xrgl=1` | Uses the WebGL copy path even where the direct WebGPU path exists (for comparing the two) |
 
 Options combine with `&`, for example `https://abyssal-garden-vr.vercel.app/?xrscale=0.6&xrdet=0.5`.
 
@@ -90,6 +94,31 @@ the frame rate, GPU time, draw distance and per-eye resolution every two seconds
 Tested on a Meta Quest 3 in November 2026: Low detail at 0.7 resolution runs well; Medium is a little glitchy and High
 glitches badly. Still worth checking on the headset: how hand tracking and the comfort settings feel, and that the sound
 keeps playing in VR (it is ambient stereo; it does not follow your head).
+
+## Maps
+
+The start menu's **Map** row switches between worlds that other people built on this engine. Each one is its own page
+with the same VR mode, comfort options and VR controls panel. Its menu has an **All maps** link back.
+
+| Map | What it is | By | Page |
+|---|---|---|---|
+| **Garden** | The original kelp forest, ship and whale tail | [Noniv](https://github.com/Noniv/abyssal-garden) | [/](https://abyssal-garden-vr.vercel.app/) |
+| **Shallows** | The garden with a swimmable surface and coastline, jellyfish and reef fish | [nox-do](https://github.com/nox-do/abyssal-garden) | [/maps/shallows/](https://abyssal-garden-vr.vercel.app/maps/shallows/) |
+| **Mine** | A Descent-style reactor mine carved out of rock, flown in a Pyro-GX | [hoyajavis](https://github.com/hoyajavis/abyssal-mine) | [/maps/mine/](https://abyssal-garden-vr.vercel.app/maps/mine/) |
+| **Asteroid** | 15 Eunomia: walk round a small asteroid with its own gravity, jump, and fly on a jetpack | [JNobleA](https://github.com/JNobleA/15-Eunomia) | [/maps/asteroid/](https://abyssal-garden-vr.vercel.app/maps/asteroid/) |
+| **Infinite** | An endless procedural sea to play as one of ten creatures (crab to whale), with hunting bots; solo here | [alexz006](https://github.com/alexz006/abyssal-infinite) | [/maps/infinite/](https://abyssal-garden-vr.vercel.app/maps/infinite/) |
+
+All are MIT-licensed forks of Abyssal Garden; each map folder keeps its source (`maps/<name>/source`, built with
+`npm run build` there) and its license. In VR the Mine is flown like the garden is swum (no roll on the sticks; your
+head does that). On the Asteroid the headset drives the game's own walking and jetpack: the ground under you is your
+floor wherever you are on the asteroid. Move stick walks (or thrusts, in the air) where you look, the other stick turns
+and thrusts up / down, A / X jumps (hold it to fly), grip boosts.
+
+In **Infinite** you play a creature (or a free camera) in the game's own way: the move stick swims where you look, the
+other stick turns and rises / sinks, the trigger bites (or strikes, or feeds), grip swims faster, A / X is a burst of
+speed and B / Y gurgles (the crab blocks). The camera sits behind your creature along the way you face in the play
+space, so looking around never swings it; turning moves it round the creature at once. The original's multiplayer
+server is not part of this copy: the map runs alone, with the bots (`?server=` still connects to one if you have it).
 
 ## Try it on a computer or phone
 
@@ -194,4 +223,4 @@ Some easy first tweaks:
 ## License
 
 [MIT](LICENSE): free to use, change and share, including in your own projects. The original Abyssal Garden is by
-[Noniv](https://github.com/Noniv/abyssal-garden); the VR mode was added in this fork.
+[Noniv](https://github.com/Noniv/abyssal-garden); the VR mode was added in this fork. The maps keep their authors' credits and licenses (see [Maps](#maps)).

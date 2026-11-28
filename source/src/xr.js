@@ -1,6 +1,10 @@
 // ============================================================================
-// VR: "Enter VR" for headset browsers that can drive WebGPU in WebXR (Quest Browser)
+// VR: "Enter VR" for headset browsers with WebXR and WebGPU
 // ============================================================================
+// Two ways to reach the headset. Where the browser has the WebXR/WebGPU binding (Quest Browser), the composite
+// writes straight into the headset's layer. Elsewhere (and if the binding is refused) the session is a plain WebGL
+// one: each eye is drawn into a WebGPU canvas, which WebGL then copies into the headset's framebuffer. That costs one
+// copy per eye but works in any browser that has both WebXR and WebGPU (idea from strayer/abyssal-garden-vr, MIT).
 // The world, the shaders and the passes are the desktop ones. Each frame, for each eye: the camera comes from the
 // headset (setCam with that eye's off-centre frustum), the passes run into our own targets at the eye's size, and the
 // composite writes into the headset's projection layer.
@@ -68,6 +72,21 @@
   navigator.xr?.isSessionSupported('immersive-vr').then((ok) => { if (ok) { bVR.hidden = bOpt.hidden = false; $('r').classList.add('vr'); showOpt(); } }).catch(() => 0);
 
   let xb, layer, xref, pPostXR, passXR, deskDet = det, place = true;
+  // the WebGL path: a WebGPU canvas per eye, and a WebGL program that draws it over the eye's viewport
+  let gl = null, glL = null, xc, xctx, xcW = 0, xcH = 0;
+  function glInit() {
+    xc = document.createElement('canvas'); xctx = xc.getContext('webgpu');
+    gl = document.createElement('canvas').getContext('webgl2', { xrCompatible: true, alpha: false, antialias: false, depth: false });
+    const p = gl.createProgram(), sh = (t, src) => { const o = gl.createShader(t); gl.shaderSource(o, src); gl.compileShader(o); gl.attachShader(p, o); };
+    sh(gl.VERTEX_SHADER, 'attribute vec2 p;varying vec2 u;void main(){u=vec2(p.x,-p.y)*.5+.5;gl_Position=vec4(p,0,1);}');
+    sh(gl.FRAGMENT_SHADER, 'precision mediump float;uniform sampler2D t;varying vec2 u;void main(){gl_FragColor=vec4(texture2D(t,u).rgb,1);}');
+    gl.bindAttribLocation(p, 0, 'p'); gl.linkProgram(p); gl.useProgram(p);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    gl.enable(gl.SCISSOR_TEST);
+  }
   const rig = new Float64Array(4); // play-space origin in the world (x, y, z) and its turn about the vertical (w)
   const held = new Set(); // input sources with select held: a hand's pinch
   // rotate (x, y, z) by the rig's turn: the result is in R[0..2]
@@ -78,18 +97,32 @@
 
   async function enter() {
     sound(); say2('');
-    if (typeof XRGPUBinding === 'undefined') return say2('This browser can show VR, but not with WebGPU yet. On Quest, update the Browser; on older versions, turn on "WebXR experiments" in chrome://flags.');
-    let s;
-    try { s = await navigator.xr.requestSession('immersive-vr', { requiredFeatures: ['webgpu'], optionalFeatures: ['hand-tracking'] }); }
-    catch (e) { return say2('VR did not start: ' + e.message); }
+    let s = null;
+    // the binding first (no copy), then a WebGL session (?xrgl=1 forces that one, for testing)
+    if (typeof XRGPUBinding !== 'undefined' && URLQ.get('xrgl') !== '1')
+      s = await navigator.xr.requestSession('immersive-vr', { requiredFeatures: ['webgpu'], optionalFeatures: ['hand-tracking'] }).catch(() => null);
+    glL = null;
     try {
-      xb = new XRGPUBinding(s, device);
-      const fmt = xb.getPreferredColorFormat();
-      layer = xb.createProjectionLayer({ colorFormat: fmt, scaleFactor: XSCALE });
+      if (!s) s = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['hand-tracking'] });
+    } catch (e) { return say2('VR did not start: ' + e.message); }
+    try {
+      let fmt;
+      if (s.enabledFeatures ? s.enabledFeatures.includes('webgpu') : typeof XRGPUBinding !== 'undefined' && URLQ.get('xrgl') !== '1') {
+        xb = new XRGPUBinding(s, device);
+        fmt = xb.getPreferredColorFormat();
+        layer = xb.createProjectionLayer({ colorFormat: fmt, scaleFactor: XSCALE });
+        s.updateRenderState({ layers: [layer] });
+      } else {
+        if (!gl) glInit();
+        await gl.makeXRCompatible();
+        glL = new XRWebGLLayer(s, gl, { framebufferScaleFactor: XSCALE, antialias: false, depth: false, alpha: false });
+        s.updateRenderState({ baseLayer: glL });
+        fmt = navigator.gpu.getPreferredCanvasFormat(); xcW = 0;
+      }
       if (!pPostXR || passXR.fmt !== fmt) { pPostXR = postPipe(fmt); passXR = { fmt, colorAttachments: [{ view: null, loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] }; }
-      s.updateRenderState({ layers: [layer] });
       xref = await s.requestReferenceSpace('local');
     } catch (e) { s.end().catch(() => 0); return say2('VR did not start: ' + e.message); }
+    console.log('[xr] session through ' + (glL ? 'WebGL (copy per eye)' : 'the WebGPU binding'));
     xs = s; place = true; held.clear(); deskDet = det; det = XDET; xDyn = xN = xG = xGN = 0;
     s.addEventListener('selectstart', (e) => held.add(e.inputSource));
     s.addEventListener('selectend', (e) => held.delete(e.inputSource));
@@ -184,7 +217,11 @@
     // ---- both eyes
     const views = pose.views;
     for (let i = 0; i < views.length; i++) {
-      const v = views[i], sub = xb.getViewSubImage(layer, v), vp = sub.viewport;
+      const v = views[i], sub = glL ? null : xb.getViewSubImage(layer, v), gvp = glL && glL.getViewport(v);
+      const vp = glL ? { x: 0, y: 0, width: gvp.width, height: gvp.height } : sub.viewport;
+      if (glL && (xcW !== vp.width || xcH !== vp.height)) {
+        xc.width = xcW = vp.width; xc.height = xcH = vp.height; xctx.configure({ device, format: passXR.fmt, alphaMode: 'opaque' });
+      }
       if (vp.width !== W || vp.height !== H) makeTargets(vp.width, vp.height);
       const m = v.transform.matrix, P = v.projectionMatrix;
       rot(m[12], m[13], m[14]); const ex = rig[0] + R[0], ey = rig[1] + R[1], ez = rig[2] + R[2];
@@ -196,9 +233,15 @@
       UB[60] = (1 - P[8]) / 2; UB[61] = (1 + P[9]) / 2; UB[62] = vig; UB[64] = vp.x; UB[65] = vp.y;
       Q.writeBuffer(ubo, 0, UB);
       const e = device.createCommandEncoder();
-      passXR.colorAttachments[0].view = sub.colorTexture.createView(sub.getViewDescriptor());
+      passXR.colorAttachments[0].view = glL ? xctx.getCurrentTexture().createView() : sub.colorTexture.createView(sub.getViewDescriptor());
       draw(e, i === 0, i === views.length - 1, pPostXR, passXR, vp, XBLOOM);
       Q.submit([e.finish()]);
+      if (glL) { // copy this eye's canvas into the headset's framebuffer
+        gl.bindFramebuffer(gl.FRAMEBUFFER, glL.framebuffer);
+        gl.viewport(gvp.x, gvp.y, gvp.width, gvp.height); gl.scissor(gvp.x, gvp.y, gvp.width, gvp.height);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, xc);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
     }
   }
 }
